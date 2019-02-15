@@ -4,7 +4,7 @@ import glob
 import cv2
 import matplotlib.pyplot as plt
 
-class DataLoader():
+class KittiDataLoader():
     '''
     raw_data_dir = dir containing extracted raw KITTI data (folder containing 2011-09-26 etc.)
     depth_maps_dir = dir containing extracted depth maps
