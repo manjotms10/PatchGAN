@@ -5,10 +5,10 @@ import cv2
 import matplotlib.pyplot as plt
 
 class KittiDataLoader():
-    '''
+    """
     raw_data_dir = dir containing extracted raw KITTI data (folder containing 2011-09-26 etc.)
     depth_maps_dir = dir containing extracted depth maps
-    '''
+    """
     
     def __init__(self, raw_data_dir, depth_maps_dir):
         
@@ -30,7 +30,7 @@ class KittiDataLoader():
                 self.labels.append(path)
         
         print('Found {} Images and {} Depth Maps'.format(len(self.imgs), len(self.labels)))
-        
+
     def get_one_batch(self, batch_size = 64):
         train_images = []
         train_labels = []
@@ -41,3 +41,10 @@ class KittiDataLoader():
                 train_images.append(cv2.imread(self.img_files[i]).astype(np.float32)/255)
                 train_labels.append(cv2.imread(self.labels[i]).astype(np.float32))
             yield np.array(train_images), np.array(train_labels)
+
+
+class NyuDataLoader():
+    """
+    data loader for NYU dataset
+    """
+    pass

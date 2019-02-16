@@ -25,94 +25,29 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 best_result = Result()
 best_result.set_to_worst()
 
+raw_data_dir = ""
+depth_maps_dir = ""
 
 def create_loader(args):
-    root_dir = Path.db_root_dir(args.dataset)
-    if args.dataset == 'kitti':
-        train_set = KittiFolder(root_dir, mode='train', size=(385, 513))
-        test_set = KittiFolder(root_dir, mode='test', size=(385, 513))
-        train_loader = torch.utils.data.DataLoader(train_set, batch_size=args.batch_size, shuffle=True,
-                                                   num_workers=args.workers, pin_memory=True)
-        test_loader = torch.utils.data.DataLoader(test_set, batch_size=1, shuffle=False,
-                                                  num_workers=args.workers, pin_memory=True)
-        return train_loader, test_loader
-    else:
-        traindir = os.path.join(root_dir, 'train')
-        if os.path.exists(traindir):
-            print('Train dataset "{}" is existed!'.format(traindir))
-        else:
-            print('Train dataset "{}" is not existed!'.format(traindir))
-            exit(-1)
-
-        valdir = os.path.join(root_dir, 'val')
-        if os.path.exists(traindir):
-            print('Train dataset "{}" is existed!'.format(valdir))
-        else:
-            print('Train dataset "{}" is not existed!'.format(valdir))
-            exit(-1)
-
-        train_set = nyu_dataloader.NYUDataset(traindir, type='train')
-        val_set = nyu_dataloader.NYUDataset(valdir, type='val')
-
-        train_loader = torch.utils.data.DataLoader(
-            train_set, batch_size=args.batch_size, shuffle=True, num_workers=args.workers, pin_memory=True)
-
-        val_loader = torch.utils.data.DataLoader(
-            val_set, batch_size=1, shuffle=False, num_workers=args.workers, pin_memory=True)
-
-        return train_loader, val_loader
-
+    root_dir = ""
+    # train_loader =
+    # val_loader =
+    # return train_loader, val_loader
+    pass
 
 def main():
     global args, best_result, output_directory
 
-    # set random seed
-    torch.manual_seed(args.manual_seed)
-    torch.cuda.manual_seed(args.manual_seed)
-    np.random.seed(args.manual_seed)
-    random.seed(args.manual_seed)
-
-    if torch.cuda.device_count() > 1:
-        print("Let's use", torch.cuda.device_count(), "GPUs!")
-        args.batch_size = args.batch_size * torch.cuda.device_count()
-    else:
-        print("Let's use GPU ", torch.cuda.current_device())
-
     train_loader, val_loader = create_loader(args)
 
-    if args.resume:
-        assert os.path.isfile(args.resume), \
-            "=> no checkpoint found at '{}'".format(args.resume)
-        print("=> loading checkpoint '{}'".format(args.resume))
-        checkpoint = torch.load(args.resume)
+    # different modules have different learning rate
+    train_params = [{'params': model.get_1x_lr_params(), 'lr': args.lr},
+                    {'params': model.get_10x_lr_params(), 'lr': args.lr * 10}]
 
-        start_epoch = checkpoint['epoch'] + 1
-        best_result = checkpoint['best_result']
-        optimizer = checkpoint['optimizer']
+    optimizer = torch.optim.SGD(train_params, lr=args.lr, momentum=args.momentum, weight_decay=args.weight_decay)
 
-        # solve 'out of memory'
-        model = checkpoint['model']
-
-        print("=> loaded checkpoint (epoch {})".format(checkpoint['epoch']))
-
-        # clear memory
-        del checkpoint
-        # del model_dict
-        torch.cuda.empty_cache()
-    else:
-        print("=> creating Model")
-        model = get_models(args.dataset)
-        print("=> model created.")
-        start_epoch = 0
-
-        # different modules have different learning rate
-        train_params = [{'params': model.get_1x_lr_params(), 'lr': args.lr},
-                        {'params': model.get_10x_lr_params(), 'lr': args.lr * 10}]
-
-        optimizer = torch.optim.SGD(train_params, lr=args.lr, momentum=args.momentum, weight_decay=args.weight_decay)
-
-        # You can use DataParallel() whether you use Multi-GPUs or not
-        model = nn.DataParallel(model).cuda()
+    # You can use DataParallel() whether you use Multi-GPUs or not
+    model = nn.DataParallel(model).cuda()
 
     # when training, use reduceLROnPlateau to reduce learning rate
     scheduler = lr_scheduler.ReduceLROnPlateau(
