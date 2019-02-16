@@ -24,16 +24,16 @@ class DataLoader():
         self.val_data = []
 
         for l in self.train_files:
-            self.train_data.append(l.split(' ')[0])
-            self.train_data.append(l.split(' ')[1])
+            self.train_data.append(raw_images_path + l.split(' ')[0])
+            self.train_data.append(raw_images_path + l.split(' ')[1])
 
         for l in self.test_files:
-            self.test_data.append(l.split(' ')[0])
-            self.test_data.append(l.split(' ')[1])
+            self.test_data.append(raw_images_path + l.split(' ')[0])
+            self.test_data.append(raw_images_path + l.split(' ')[1])
 
         for l in self.val_files:
-            self.val_data.append(l.split(' ')[0])
-            self.val_data.append(l.split(' ')[1])
+            self.val_data.append(raw_images_path + l.split(' ')[0])
+            self.val_data.append(raw_images_path + l.split(' ')[1])
         
         
         self.train_imgs, self.train_labels = [], []
