@@ -120,11 +120,10 @@ def train(train_loader, model, criterion, optimizer, epoch, logger, device, opts
     model.train()  # switch to train mode
     end = time.time()
 
-    batch_num = len(train_loader.train_imgs) // opts.batch_size
+    batch_num = len(train_loader)
 
-    for i in range(batch_num):
+    for i, (input, target) in enumerate(train_loader):
 
-        input, target = next(train_loader.get_one_batch(opts.batch_size))
         input = input.to(device)
         target = target.to(device)
 
@@ -142,13 +141,15 @@ def train(train_loader, model, criterion, optimizer, epoch, logger, device, opts
             optimizer.zero_grad()
             loss.backward()  # compute gradient and do SGD step
             optimizer.step()
-
-        torch.cuda.synchronize()
+        
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+        
         gpu_time = time.time() - end
 
         # measure accuracy and record loss
         result = Result()
-        depth = utils.get_depth_sid(opts, pred_d)
+        depth = utils.get_depth_sid(opts, pred_d, device)
         result.evaluate(depth.data, target.data)
         average_meter.update(result, gpu_time, data_time, input.size(0))
         end = time.time()

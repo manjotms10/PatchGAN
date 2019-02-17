@@ -1,4 +1,5 @@
 .idea/*
 *.pyc
-
-
+data/*
+checkpoints/*
+.ipynb_checkpoints/*

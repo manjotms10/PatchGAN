@@ -115,7 +115,8 @@ class KittiData(Dataset):
         else:
             print('no mode named as ', mode)
             exit(-1)
-
+        
+        self.im_gt_paths = []
         for l in self.files:
             file_names = l.split()
             self.im_gt_paths.append(file_names[0])
@@ -210,5 +211,7 @@ class KittiData(Dataset):
             im, gt = self.train_transform(im, gt)
         else:
             im, gt = self.val_transform(im, gt)
+        
+        im = im.permute(2,0,1)
 
         return im, gt

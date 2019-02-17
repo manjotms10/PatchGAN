@@ -19,7 +19,7 @@ def get_opts():
     opts.momentum = 0.9
     opts. weight_decay = 0.0005
     opts.lr_patience = 2
-    opts.batch_size = 4
+    opts.batch_size = 1
     opts.epochs = 5
     opts.print_freq = 1
     return opts
@@ -46,25 +46,26 @@ the predicted depth value d(w, h) can be decoded as below.
 
 def get_depth_sid(opts, labels, device):
     if opts.dataset == 'kitti':
-        min = 0.001
-        max = 80.0
+        min_ = 0.001
+        max_ = 80.0
         K = 71.0
     elif opts.dataset == 'nyu':
-        min = 0.02
-        max = 80.0
+        min_ = 0.02
+        max_ = 80.0
         K = 68.0
     else:
         print('No Dataset named as ', args.dataset)
 
-    alpha_ = torch.Tensor(min).to(device)
-    beta_ = torch.Tensor(max).to(device)
-    K_ = torch.Tensor(K).to(device)
+    alpha_ = torch.from_numpy(np.array(min_)).to(device)
+    beta_ = torch.from_numpy(np.array(max_)).to(device)
+    K_ = torch.from_numpy(np.array(K)).to(device)
 
     depth = torch.exp(torch.log(alpha_) + torch.log(beta_ / alpha_) * labels / K_)
     return depth.float()
 
 
 def get_labels_sid(opts, depth, device):
+
     if opts.dataset == 'kitti':
         alpha = 0.001
         beta = 80.0
@@ -75,7 +76,7 @@ def get_labels_sid(opts, depth, device):
         K = 68.0
     else:
         print('No Dataset named as ', args.dataset)
-
+    
     alpha = torch.from_numpy(np.array(alpha)).to(device)
     beta = torch.from_numpy(np.array(beta)).to(device)
     K = torch.from_numpy(np.array(K)).to(device)
@@ -83,6 +84,7 @@ def get_labels_sid(opts, depth, device):
     labels = K * torch.log(depth / alpha) / torch.log(beta / alpha)
 
     labels = labels.to(device)
+    print(labels.shape)
     return labels.int()
 
 

@@ -124,12 +124,6 @@ class SceneUnderstandingModule(nn.Module):
         x3 = self.aspp2(x)
         x4 = self.aspp3(x)
         x5 = self.aspp4(x)
-        
-#         print(x1.shape)
-#         print(x2.shape)
-#         print(x3.shape)
-#         print(x4.shape)
-#         print(x5.shape)
 
         x6 = torch.cat((x1, x2, x3, x4, x5), dim=1)
 #         print('cat x6 size:', x6.size())
@@ -246,9 +240,14 @@ class DORN(nn.Module):
         self.orl = OrdinalRegressionLayer()
 
     def forward(self, x):
+#         print("X:", x.shape)
         x1 = self.feature_extractor(x)
+#         print("X1:", x1.shape)
         x2 = self.aspp_module(x1)
+#         print("X2:", x1.shape)
         depth_labels, ord_labels = self.orl(x2)
+#         print("Depth:", depth_labels.shape)
+#         print("Ord:", ord_labels.shape)
         return depth_labels, ord_labels
 
     def get_1x_lr_params(self):
