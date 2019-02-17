@@ -5,6 +5,9 @@ import cv2
 import matplotlib.pyplot as plt
 import torch
 
+import transforms
+
+
 class DataLoader():
     '''
     raw_data_dir = dir containing extracted raw KITTI data (folder containing 2011-09-26 etc.)
@@ -71,7 +74,43 @@ class DataLoader():
         print('Found %d Validation Images %d'%(len(self.val_imgs), len(self.val_labels)))
         print('Found %d Test Images %d'%(len(self.test_imgs), len(self.test_labels)))
         
-        
+
+    def train_transform(self, im, gt):
+        im = np.array(im).astype(np.float32)
+        gt = np.array(gt).astype(np.float32)
+
+        s = np.random.uniform(1.0, 1.5)  # random scaling
+        angle = np.random.uniform(-5.0, 5.0)  # random rotation degrees
+        do_flip = np.random.uniform(0.0, 1.0) < 0.5  # random horizontal flip
+        color_jitter = transforms.ColorJitter(0.4, 0.4, 0.4)
+
+        transform = transforms.Compose([
+            transforms.Crop(130, 10, 240, 1200),
+            transforms.Resize(460 / 240, interpolation='bilinear'),
+            transforms.Rotate(angle),
+            transforms.Resize(s),
+            transforms.CenterCrop(self.size),
+            transforms.HorizontalFlip(do_flip)
+        ])
+
+        im_ = transform(im)
+        im_ = color_jitter(im_)
+
+        gt_ = transform(gt)
+
+        im_ = np.array(im_).astype(np.float32)
+        gt_ = np.array(gt_).astype(np.float32)
+
+        im_ /= 255.0
+        gt_ /= 100.0 * s
+        im_ = torch.Tensor(im_)
+        gt_ = torch.Tensor(gt_)
+
+        gt_ = gt_.unsqueeze(0)
+
+        return im_, gt_
+
+
     def get_one_batch(self, batch_size = 64, split='train'):
         train_images = []
         train_labels = []
