@@ -146,6 +146,7 @@ def train(train_loader, model, criterion, optimizer, epoch, logger, device, opts
         
         gpu_time = time.time() - end
 
+
         # measure accuracy and record loss
         result = Result()
         depth = utils.get_depth_sid(opts, pred_d, device)
@@ -174,6 +175,9 @@ def train(train_loader, model, criterion, optimizer, epoch, logger, device, opts
             logger.add_scalar('Train/Delta1', result.delta1, current_step)
             logger.add_scalar('Train/Delta2', result.delta2, current_step)
             logger.add_scalar('Train/Delta3', result.delta3, current_step)
+
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
     avg = average_meter.average()
 
