@@ -119,7 +119,7 @@ class DataLoader():
             idx = np.random.choice(len(self.train_imgs), batch_size)
             for i in idx:
                 x, y = cv2.imread(self.train_imgs[i]).astype(np.float32)/255, cv2.imread(self.train_labels[i]).astype(np.float32)/100
-                x, y = cv2.resize(x, (90, 270)), cv2.resize(y, (90, 270))
+                # x, y = cv2.resize(x, (90, 270)), cv2.resize(y, (90, 270))
                 train_images.append(x)
                 train_labels.append(y)
 

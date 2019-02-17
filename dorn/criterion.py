@@ -94,11 +94,12 @@ class ordLoss(nn.Module):
 
         self.loss = 0.0
 
-
         K = torch.zeros((N, C, H, W), dtype=torch.int).to(self.device)
         for i in range(ord_num):
             K[:, i, :, :] = K[:, i, :, :] + i * torch.ones((N, H, W), dtype=torch.int).to(self.device)
 
+        print(K.shape)
+        print(target.shape)
 
         mask_0 = (K <= target).detach()
         mask_1 = (K > target).detach()
