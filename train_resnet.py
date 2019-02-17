@@ -1,5 +1,3 @@
-get_ipython().system('pip install torch torchvision')
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -448,14 +446,14 @@ train_params = [{'params': model.get_1x_lr_params(), 'lr': lr},
 optimizer = torch.optim.SGD(train_params, lr=lr, weight_decay=4e-5)
 
 # You can use DataParallel() whether you use Multi-GPUs or not
-model = nn.DataParallel(model, torch.cuda.device_count()).cuda()
+model = nn.DataParallel(model).cuda()
 
 criterion = MaskedL1Loss()
 
 def train(train_loader, model, criterion, optimizer, epoch):
     model.train()  # switch to train mode
 
-    for iter_ in range(50):
+    for iter_ in range(43000//32):
 
         input, target = next(train_loader.get_one_batch(32))
         input, target = input.cuda(), target.cuda()
@@ -475,6 +473,6 @@ def train(train_loader, model, criterion, optimizer, epoch):
                 epoch, iter_ + 1,
                 Loss=loss.item()))
 
-for i in range(10):
+for i in range(25):
     train(data, model, criterion, optimizer, i)
 
