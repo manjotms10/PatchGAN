@@ -2,7 +2,7 @@ import numpy as np
 import os
 import glob
 import cv2
-import matplotlib.pyplot as plt
+import torch
 
 class DataLoader():
     '''
@@ -82,4 +82,4 @@ class DataLoader():
                 x, y = cv2.resize(x, (90, 270)), cv2.resize(y, (90, 270))
                 train_images.append(x)
                 train_labels.append(y)
-            yield torch.from_numpy(np.array(train_images)), torch.from_numpy(np.array(train_labels))
+            yield torch.from_numpy(np.array(train_images)).permute(0, 3, 2, 1), torch.from_numpy(np.array(train_labels)).permute(0, 3, 2, 1)
