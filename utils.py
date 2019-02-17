@@ -44,7 +44,7 @@ the predicted depth value d(w, h) can be decoded as below.
 """
 
 
-def get_depth_sid(opts, labels, device):
+def get_depth_sid(opts, labels):
     if opts.dataset == 'kitti':
         alpha_ = 0.001
         beta_ = 80.0
@@ -54,9 +54,13 @@ def get_depth_sid(opts, labels, device):
         beta_ = 80.0
         K_ = 68.0
     else:
-        print('No Dataset named as ', args.dataset)
+        print('No Dataset named as ', opts.dataset)
+        exit(-1)
 
-    depth = torch.exp(torch.log(alpha_) + torch.log(beta_ / alpha_) * labels / K_)
+    if torch.cuda.is_available():
+        labels = labels.cpu()
+
+    depth = np.exp(np.log(alpha_) + np.log(beta_ / alpha_) * labels.to_numpy() / K_)
     return depth.float()
 
 
@@ -71,12 +75,11 @@ def get_labels_sid(opts, depth, device):
         beta = 10.0
         K = 68.0
     else:
-        print('No Dataset named as ', opts.dataset)
+        print('No Dataset named as ', args.dataset)
 
-    labels = K * torch.log(depth / alpha) / torch.log(beta / alpha)
+    labels = torch.from_numpy(K * np.log(depth / alpha) / np.log(beta / alpha))
 
     labels = labels.to(device)
-    print(labels.shape)
     return labels.int()
 
 
@@ -91,9 +94,9 @@ class EpochTracker():
                 a = f.read()
                 self.epoch = int(a)
 
-    def write(self, epoch, iteration):
+    def write(self, epoch):
         self.epoch = epoch
-        data = epoch
+        data = "{}".format(self.epoch)
         with open(self.in_file, 'w') as f:
             f.write(data)
 

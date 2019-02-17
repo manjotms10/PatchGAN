@@ -151,7 +151,7 @@ def train(train_loader, model, criterion, optimizer, epoch, logger, device, opts
 
         # measure accuracy and record loss
         result = Result()
-        depth = utils.get_depth_sid(opts, pred_d, device)
+        depth = utils.get_depth_sid(opts, pred_d)
         result.evaluate(depth.data, target.data)
         average_meter.update(result, gpu_time, data_time, input.size(0))
         end = time.time()
