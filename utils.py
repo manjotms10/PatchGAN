@@ -46,19 +46,15 @@ the predicted depth value d(w, h) can be decoded as below.
 
 def get_depth_sid(opts, labels, device):
     if opts.dataset == 'kitti':
-        min_ = 0.001
-        max_ = 80.0
-        K = 71.0
+        alpha_ = 0.001
+        beta_ = 80.0
+        K_ = 71.0
     elif opts.dataset == 'nyu':
-        min_ = 0.02
-        max_ = 80.0
-        K = 68.0
+        alpha_ = 0.02
+        beta_ = 80.0
+        K_ = 68.0
     else:
         print('No Dataset named as ', args.dataset)
-
-    alpha_ = torch.from_numpy(np.array(min_)).to(device)
-    beta_ = torch.from_numpy(np.array(max_)).to(device)
-    K_ = torch.from_numpy(np.array(K)).to(device)
 
     depth = torch.exp(torch.log(alpha_) + torch.log(beta_ / alpha_) * labels / K_)
     return depth.float()
@@ -75,17 +71,31 @@ def get_labels_sid(opts, depth, device):
         beta = 10.0
         K = 68.0
     else:
-        print('No Dataset named as ', args.dataset)
-    
-    alpha = torch.from_numpy(np.array(alpha)).to(device)
-    beta = torch.from_numpy(np.array(beta)).to(device)
-    K = torch.from_numpy(np.array(K)).to(device)
+        print('No Dataset named as ', opts.dataset)
 
     labels = K * torch.log(depth / alpha) / torch.log(beta / alpha)
 
     labels = labels.to(device)
     print(labels.shape)
     return labels.int()
+
+
+class EpochTracker():
+    def __init__(self, in_file):
+        self.epoch = 0
+        self.in_file = in_file
+        self.file_exists = os.path.isfile(in_file)
+
+        if self.file_exists:
+            with open(in_file, 'r') as f:
+                a = f.read()
+                self.epoch = int(a)
+
+    def write(self, epoch, iteration):
+        self.epoch = epoch
+        data = epoch
+        with open(self.in_file, 'w') as f:
+            f.write(data)
 
 
 # save checkpoint

@@ -28,6 +28,7 @@ best_result.set_to_worst()
 raw_data_dir = "data/"
 depth_maps_dir = "data/depth_maps/"
 output_directory = "checkpoints/"
+epoch_file = "epoch.txt"
 
 
 def create_loader(opts):
@@ -41,6 +42,7 @@ def create_loader(opts):
 def main():
     model = DORN()
     opts = utils.get_opts()
+    epoch_tracker = utils.EpochTracker(epoch_file)
 
     train_loader, val_loader = create_loader(opts)
 
@@ -72,9 +74,8 @@ def main():
     logger = SummaryWriter(log_path)
 
     start_epoch = 0
-    epochs = 5
 
-    for epoch in range(start_epoch, epochs):
+    for epoch in range(start_epoch, opts.epochs):
 
         # remember change of the learning rate
         for i, param_group in enumerate(optimizer.param_groups):
@@ -82,34 +83,35 @@ def main():
             logger.add_scalar('Lr/lr_' + str(i), old_lr, epoch)
 
         train(train_loader, model, criterion, optimizer, epoch, logger, device, opts)  # train for one epoch
-        # result, img_merge = validate(val_loader, model, epoch, logger)  # evaluate on validation set
+        result, img_merge = validate(val_loader, model, epoch, logger)  # evaluate on validation set
 
         # remember best rmse and save checkpoint
-        # is_best = result.rmse < best_result.rmse
-        # if is_best:
-        #     best_result = result
-        #     with open(best_txt, 'w') as txtfile:
-        #         txtfile.write(
-        #             "epoch={}, rmse={:.3f}, rml={:.3f}, log10={:.3f}, d1={:.3f}, d2={:.3f}, dd31={:.3f}, "
-        #             "t_gpu={:.4f}".
-        #                 format(epoch, result.rmse, result.absrel, result.lg10, result.delta1, result.delta2,
-        #                        result.delta3,
-        #                        result.gpu_time))
-        #     if img_merge is not None:
-        #         img_filename = output_directory + '/comparison_best.png'
-        #         utils.save_image(img_merge, img_filename)
+        is_best = result.rmse < best_result.rmse
+        if is_best:
+            best_result = result
+            with open(best_txt, 'w') as txtfile:
+                txtfile.write(
+                    "epoch={}, rmse={:.3f}, rml={:.3f}, log10={:.3f}, d1={:.3f}, d2={:.3f}, dd31={:.3f}, "
+                    "t_gpu={:.4f}".
+                        format(epoch, result.rmse, result.absrel, result.lg10, result.delta1, result.delta2,
+                               result.delta3,
+                               result.gpu_time))
+            if img_merge is not None:
+                img_filename = output_directory + '/comparison_best.png'
+                utils.save_image(img_merge, img_filename)
 
         # save checkpoint for each epoch
-        # utils.save_checkpoint({
-        #     'args': args,
-        #     'epoch': epoch,
-        #     'model': model,
-        #     'best_result': best_result,
-        #     'optimizer': optimizer,
-        # }, is_best, epoch, output_directory)
+        utils.save_checkpoint({
+            'args': opts,
+            'epoch': epoch,
+            'model': model,
+            'best_result': best_result,
+            'optimizer': optimizer,
+        }, is_best, epoch, output_directory)
 
+        epoch_tracker.write(epoch)
         # when rml doesn't fall, reduce learning rate
-        # scheduler.step(result.absrel)
+        scheduler.step(result.absrel)
 
     logger.close()
 

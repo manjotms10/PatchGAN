@@ -119,14 +119,12 @@ class SceneUnderstandingModule(nn.Module):
 
     def forward(self, x):
         x1 = self.encoder(x)
-
         x2 = self.aspp1(x)
         x3 = self.aspp2(x)
         x4 = self.aspp3(x)
         x5 = self.aspp4(x)
-
         x6 = torch.cat((x1, x2, x3, x4, x5), dim=1)
-#         print('cat x6 size:', x6.size())
+
         out = self.concat_process(x6)
         return out
 
@@ -137,18 +135,18 @@ class OrdinalRegressionLayer(nn.Module):
 
     def forward(self, x):
         """
-        :param x: N X H X W X C, N is batch_size, C is channels of features
-        :return: ord_labels is ordinal outputs for each spatial locations , size is N x H X W X C (C = 2K, K is interval of SID)
+        :param x: N X C X W X H, N is batch_size, C is channels of features
+        :return: ord_labels is ordinal outputs for each spatial locations , size is N x C X W X H (C = 2K, K is interval of SID)
                  decode_label is the ordinal labels for each position of Image I
         """
-        N, C, H, W = x.size()
+        N, C, W, H = x.size()
         ord_num = C // 2
 
         A = x[:, ::2, :, :].clone()
         B = x[:, 1::2, :, :].clone()
 
-        A = A.view(N, 1, ord_num * H * W)
-        B = B.view(N, 1, ord_num * H * W)
+        A = A.view(N, 1, ord_num * W * H)
+        B = B.view(N, 1, ord_num * W * H)
 
         C = torch.cat((A, B), dim=1)
         C = torch.clamp(C, min=1e-8, max=1e8)  # prevent nans
@@ -156,8 +154,8 @@ class OrdinalRegressionLayer(nn.Module):
         ord_c = F.softmax(C, dim=1)
 
         ord_c1 = ord_c[:, 1, :].clone()
-        ord_c1 = ord_c1.view(-1, ord_num, H, W)
-        decode_c = torch.sum(ord_c1, dim=1).view(-1, 1, H, W)
+        ord_c1 = ord_c1.view(-1, ord_num, W, H)
+        decode_c = torch.sum(ord_c1, dim=1).view(-1, 1, W, H)
         return decode_c, ord_c1
 
 
@@ -240,14 +238,9 @@ class DORN(nn.Module):
         self.orl = OrdinalRegressionLayer()
 
     def forward(self, x):
-#         print("X:", x.shape)
         x1 = self.feature_extractor(x)
-#         print("X1:", x1.shape)
         x2 = self.aspp_module(x1)
-#         print("X2:", x1.shape)
         depth_labels, ord_labels = self.orl(x2)
-#         print("Depth:", depth_labels.shape)
-#         print("Ord:", ord_labels.shape)
         return depth_labels, ord_labels
 
     def get_1x_lr_params(self):
