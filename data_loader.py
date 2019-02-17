@@ -106,6 +106,7 @@ class DataLoader():
         im_ = torch.Tensor(im_)
         gt_ = torch.Tensor(gt_)
 
+        im_ = im_.unsqueeze(0)
         gt_ = gt_.unsqueeze(0)
 
         return im_, gt_
@@ -120,9 +121,10 @@ class DataLoader():
             for i in idx:
                 x, y = cv2.imread(self.train_imgs[i]).astype(np.float32)/255, cv2.imread(self.train_labels[i]).astype(np.float32)/100
                 # x, y = cv2.resize(x, (90, 270)), cv2.resize(y, (90, 270))
+                x, y = self.train_transform(x, y)
                 train_images.append(x)
                 train_labels.append(y)
 
-            images = torch.from_numpy(np.array(train_images)).permute(0, 3, 1, 2)
-            labels = torch.from_numpy(np.array(train_labels)).permute(0, 3, 1, 2)
+            images = torch.cat(train_images, dim =0).permute(0, 3, 1, 2)
+            labels = torch.cat(train_labels, dim=0).permute(0, 3, 1, 2)
             yield images, labels
