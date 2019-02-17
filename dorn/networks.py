@@ -4,7 +4,7 @@ import math
 import torch
 import torchvision
 from torch import nn
-from torch.nn import functional as F
+from torch.nn import functional as F 
 
 
 def weights_init(modules, type='xavier'):
@@ -47,9 +47,10 @@ def weights_init(modules, type='xavier'):
             if m.bias is not None:
                 m.bias.data.zero_()
 
-    if not isinstance(m, nn.Module):
+    if (isinstance(m, nn.Conv2d) or isinstance(m, nn.ConvTranspose2d) \
+        or isinstance(m, nn.BatchNorm2d) or isinstance(m, nn.Linear)):
         init(m)
-    else:
+    elif isinstance(m, nn.Module):
         for m in modules:
             init(m)
 

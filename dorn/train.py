@@ -42,12 +42,16 @@ def main():
     train_loader = create_loader()
 
     model = DORN()
-
+    lr = 0.001
+    momentum = 0.9
+    weight_decay = 0.0005
+    lr_patience = 2
+    
     # different modules have different learning rate
-    train_params = [{'params': model.get_1x_lr_params(), 'lr': args.lr},
-                    {'params': model.get_10x_lr_params(), 'lr': args.lr * 10}]
+    train_params = [{'params': model.get_1x_lr_params(), 'lr': lr},
+                    {'params': model.get_10x_lr_params(), 'lr': lr * 10}]
 
-    optimizer = torch.optim.SGD(train_params, lr=args.lr, momentum=args.momentum, weight_decay=args.weight_decay)
+    optimizer = torch.optim.SGD(train_params, lr=lr, momentum=momentum, weight_decay=weight_decay)
 
     # You can use DataParallel() whether you use Multi-GPUs or not
     model = nn.DataParallel(model).cuda()
@@ -135,7 +139,7 @@ def train(train_loader, model, criterion, optimizer, epoch, logger, device):
         end = time.time()
 
         with torch.autograd.detect_anomaly():
-            pred_d, pred_ord = model(input)  # @wx 注意输出
+            pred_d, pred_ord = model(input) 
             target_c = utils.get_labels_sid(args, target, device)  # using sid, discretize the groundtruth
             loss = criterion(pred_ord, target_c)
             optimizer.zero_grad()
