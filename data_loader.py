@@ -123,6 +123,6 @@ class DataLoader():
                 train_images.append(x)
                 train_labels.append(y)
 
-            images = torch.from_numpy(np.array(train_images)).permute(0, 3, 2,1)
-            labels = torch.from_numpy(np.array(train_labels)).permute(0, 3, 2, 1)
+            images = torch.from_numpy(np.array(train_images)).permute(0, 3, 1, 2)
+            labels = torch.from_numpy(np.array(train_labels)).permute(0, 3, 1, 2)
             yield images, labels

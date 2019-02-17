@@ -118,7 +118,7 @@ class SceneUnderstandingModule(nn.Module):
         weights_init(self.modules(), type='xavier')
 
     def forward(self, x):
-        x1 = self.encoder(x).permute(0,1,3,2)
+        x1 = self.encoder(x)
 
         x2 = self.aspp1(x)
         x3 = self.aspp2(x)
