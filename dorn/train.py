@@ -121,7 +121,7 @@ def train(train_loader, model, criterion, optimizer, epoch, logger, device, opts
 
     for i in range(batch_num):
 
-        input, target = train_loader.get_one_batch(opts.batch_size)
+        input, target = next(train_loader.get_one_batch(opts.batch_size))
         input = input.to(device)
         target = target.to(device)
 
