@@ -448,13 +448,18 @@ optimizer = torch.optim.SGD(train_params, lr=lr, weight_decay=4e-5)
 # You can use DataParallel() whether you use Multi-GPUs or not
 model = nn.DataParallel(model).cuda()
 
+# Define Loss Function
 criterion = MaskedL1Loss()
 
 def train(train_loader, model, criterion, optimizer, epoch):
     model.train()  # switch to train mode
 
     for iter_ in range(43000//32):
-
+        # Adjust Learning Rate
+        if iter_ % 100 == 0:
+            for param_group in optimizer.param_groups:
+                param_group['lr'] *= 0.99
+        
         input, target = next(train_loader.get_one_batch(32))
         input, target = input.cuda(), target.cuda()
         torch.cuda.synchronize()
@@ -468,11 +473,20 @@ def train(train_loader, model, criterion, optimizer, epoch):
         torch.cuda.synchronize()
         
         if (iter_ + 1) % 10 == 0:
-            print('Train Epoch: {0} [{1}]\t'
+            print('Train Epoch: {0} Batch: [{1}/{2}]\t'
                   'Loss={Loss:.5f}'.format(
-                epoch, iter_ + 1,
+                epoch, iter_ + 1, 43000//32, 
                 Loss=loss.item()))
 
 for i in range(25):
+    # Train the Model
     train(data, model, criterion, optimizer, i)
+    
+    # Save Checkpoint
+    torch.save({
+            'epoch': i,
+            'model_state_dict': model.state_dict(),
+            'optimizer_state_dict': optimizer.state_dict(),
+            'loss': loss,
+            }, './ResNet.pth')
 
