@@ -44,23 +44,23 @@ the predicted depth value d(w, h) can be decoded as below.
 """
 
 
-def get_depth_sid(opts, labels):
+def get_depth_sid(opts, labels, device):
     if opts.dataset == 'kitti':
-        alpha_ = 0.001
-        beta_ = 80.0
-        K_ = 71.0
+        min_ = 0.001
+        max_ = 80.0
+        K = 71.0
     elif opts.dataset == 'nyu':
-        alpha_ = 0.02
-        beta_ = 80.0
-        K_ = 68.0
+        min_ = 0.02
+        max_ = 80.0
+        K = 68.0
     else:
         print('No Dataset named as ', opts.dataset)
-        exit(-1)
 
-    if torch.cuda.is_available():
-        labels = labels.cpu()
+    alpha_ = torch.from_numpy(np.array(min_)).to(device)
+    beta_ = torch.from_numpy(np.array(max_)).to(device)
+    K_ = torch.from_numpy(np.array(K)).to(device)
 
-    depth = np.exp(np.log(alpha_) + np.log(beta_ / alpha_) * labels.to_numpy() / K_)
+    depth = np.exp(np.log(alpha_) + np.log(beta_ / alpha_) * labels / K_)
     return depth.float()
 
 
@@ -77,9 +77,14 @@ def get_labels_sid(opts, depth, device):
     else:
         print('No Dataset named as ', args.dataset)
 
-    labels = torch.from_numpy(K * np.log(depth / alpha) / np.log(beta / alpha))
+    alpha = torch.from_numpy(np.array(alpha)).to(device)
+    beta = torch.from_numpy(np.array(beta)).to(device)
+    K = torch.from_numpy(np.array(K)).to(device)
+
+    labels = K * torch.log(depth / alpha) / torch.log(beta / alpha)
 
     labels = labels.to(device)
+    print(labels.shape)
     return labels.int()
 
 
