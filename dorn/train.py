@@ -6,17 +6,17 @@ import torch
 from tensorboardX import SummaryWriter
 from torch.optim import lr_scheduler
 
-from data_utils import KittiDataLoader
+from data_loader import DataLoader
 from dorn.evaluation import AverageMeter, Result
 import utils
-import dorn.criterion
+import dorn.criterion as criteria
 import os
 import torch.nn as nn
 
 import numpy as np
 import random
 
-from network.get_models import get_models
+from dorn.networks import DORN
 
 
 # set device
@@ -25,20 +25,23 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 best_result = Result()
 best_result.set_to_worst()
 
-raw_data_dir = ""
-depth_maps_dir = ""
+raw_data_dir = "data/"
+depth_maps_dir = "data/depth_maps/"
+output_dir = "checkpoints/"
 
-def create_loader(args):
-    root_dir = ""
-    # train_loader =
+
+def create_loader():
+    train_loader = DataLoader(raw_data_dir, depth_maps_dir)
     # val_loader =
-    # return train_loader, val_loader
-    pass
+    return train_loader #, val_loader
+
 
 def main():
     global args, best_result, output_directory
 
-    train_loader, val_loader = create_loader(args)
+    train_loader = create_loader()
+
+    model = DORN()
 
     # different modules have different learning rate
     train_params = [{'params': model.get_1x_lr_params(), 'lr': args.lr},
@@ -50,27 +53,13 @@ def main():
     model = nn.DataParallel(model).cuda()
 
     # when training, use reduceLROnPlateau to reduce learning rate
-    scheduler = lr_scheduler.ReduceLROnPlateau(
-        optimizer, 'min', patience=args.lr_patience)
+    scheduler = lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=args.lr_patience)
 
     # loss function
-    criterion = criteria.ordLoss()
+    criterion = criteria.ordLoss(device)
 
-    # create directory path
-    output_directory = utils.get_output_directory(args)
-    if not os.path.exists(output_directory):
-        os.makedirs(output_directory)
-    best_txt = os.path.join(output_directory, 'best.txt')
-    config_txt = os.path.join(output_directory, 'config.txt')
-
-    # write training parameters to config file
-    if not os.path.exists(config_txt):
-        with open(config_txt, 'w') as txtfile:
-            args_ = vars(args)
-            args_str = ''
-            for k, v in args_.items():
-                args_str = args_str + str(k) + ':' + str(v) + ',\t\n'
-            txtfile.write(args_str)
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
 
     # create log
     log_path = os.path.join(output_directory, 'logs',
@@ -80,7 +69,10 @@ def main():
     os.makedirs(log_path)
     logger = SummaryWriter(log_path)
 
-    for epoch in range(start_epoch, args.epochs):
+    start_epoch = 0
+    epochs = 5
+
+    for epoch in range(start_epoch, epochs):
 
         # remember change of the learning rate
         for i, param_group in enumerate(optimizer.param_groups):
@@ -88,52 +80,54 @@ def main():
             logger.add_scalar('Lr/lr_' + str(i), old_lr, epoch)
 
         train(train_loader, model, criterion, optimizer, epoch, logger)  # train for one epoch
-        result, img_merge = validate(val_loader, model, epoch, logger)  # evaluate on validation set
+        # result, img_merge = validate(val_loader, model, epoch, logger)  # evaluate on validation set
 
         # remember best rmse and save checkpoint
-        is_best = result.rmse < best_result.rmse
-        if is_best:
-            best_result = result
-            with open(best_txt, 'w') as txtfile:
-                txtfile.write(
-                    "epoch={}, rmse={:.3f}, rml={:.3f}, log10={:.3f}, d1={:.3f}, d2={:.3f}, dd31={:.3f}, "
-                    "t_gpu={:.4f}".
-                        format(epoch, result.rmse, result.absrel, result.lg10, result.delta1, result.delta2,
-                               result.delta3,
-                               result.gpu_time))
-            if img_merge is not None:
-                img_filename = output_directory + '/comparison_best.png'
-                utils.save_image(img_merge, img_filename)
+        # is_best = result.rmse < best_result.rmse
+        # if is_best:
+        #     best_result = result
+        #     with open(best_txt, 'w') as txtfile:
+        #         txtfile.write(
+        #             "epoch={}, rmse={:.3f}, rml={:.3f}, log10={:.3f}, d1={:.3f}, d2={:.3f}, dd31={:.3f}, "
+        #             "t_gpu={:.4f}".
+        #                 format(epoch, result.rmse, result.absrel, result.lg10, result.delta1, result.delta2,
+        #                        result.delta3,
+        #                        result.gpu_time))
+        #     if img_merge is not None:
+        #         img_filename = output_directory + '/comparison_best.png'
+        #         utils.save_image(img_merge, img_filename)
 
         # save checkpoint for each epoch
-        utils.save_checkpoint({
-            'args': args,
-            'epoch': epoch,
-            'model': model,
-            'best_result': best_result,
-            'optimizer': optimizer,
-        }, is_best, epoch, output_directory)
+        # utils.save_checkpoint({
+        #     'args': args,
+        #     'epoch': epoch,
+        #     'model': model,
+        #     'best_result': best_result,
+        #     'optimizer': optimizer,
+        # }, is_best, epoch, output_directory)
 
         # when rml doesn't fall, reduce learning rate
-        scheduler.step(result.absrel)
+        # scheduler.step(result.absrel)
 
     logger.close()
 
 
 # train
-def train(train_loader, model, criterion, optimizer, epoch, logger):
+def train(train_loader, model, criterion, optimizer, epoch, logger, device):
     average_meter = AverageMeter()
     model.train()  # switch to train mode
     end = time.time()
+    print_freq = 1
 
-    batch_num = len(train_loader)
+    batch_size = 32
+    batch_num = len(train_loader.train_imgs) // batch_size
 
-    for i, (input, target) in enumerate(train_loader):
+    for i in range(batch_num):
 
-        # itr_count += 1
-        input, target = input.cuda(), target.cuda()
-        # print('input size  = ', input.size())
-        # print('target size = ', target.size())
+        input, target = train_loader.get_one_batch(batch_size)
+        input = input.to(device)
+        target = target.to(device)
+
         torch.cuda.synchronize()
         data_time = time.time() - end
 
@@ -142,7 +136,7 @@ def train(train_loader, model, criterion, optimizer, epoch, logger):
 
         with torch.autograd.detect_anomaly():
             pred_d, pred_ord = model(input)  # @wx 注意输出
-            target_c = utils.get_labels_sid(args, target)  # using sid, discretize the groundtruth
+            target_c = utils.get_labels_sid(args, target, device)  # using sid, discretize the groundtruth
             loss = criterion(pred_ord, target_c)
             optimizer.zero_grad()
             loss.backward()  # compute gradient and do SGD step
@@ -158,7 +152,7 @@ def train(train_loader, model, criterion, optimizer, epoch, logger):
         average_meter.update(result, gpu_time, data_time, input.size(0))
         end = time.time()
 
-        if (i + 1) % args.print_freq == 0:
+        if (i + 1) % print_freq == 0:
             print('=> output: {}'.format(output_directory))
             print('Train Epoch: {0} [{1}/{2}]\t'
                   't_Data={data_time:.3f}({average.data_time:.3f}) '
