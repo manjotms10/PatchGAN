@@ -19,7 +19,7 @@ def get_opts():
     opts.momentum = 0.9
     opts. weight_decay = 0.0005
     opts.lr_patience = 2
-    opts.batch_size = 32
+    opts.batch_size = 4
     opts.epochs = 5
     opts.print_freq = 1
     return opts
@@ -76,9 +76,9 @@ def get_labels_sid(opts, depth, device):
     else:
         print('No Dataset named as ', args.dataset)
 
-    alpha = torch.Tensor(alpha).to(device)
-    beta = torch.Tensor(beta).to(device)
-    K = torch.Tensor(K).to(device)
+    alpha = torch.from_numpy(np.array(alpha)).to(device)
+    beta = torch.from_numpy(np.array(beta)).to(device)
+    K = torch.from_numpy(np.array(K)).to(device)
 
     labels = K * torch.log(depth / alpha) / torch.log(beta / alpha)
 

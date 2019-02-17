@@ -49,7 +49,8 @@ def main():
     optimizer = torch.optim.SGD(train_params, lr=opts.lr, momentum=opts.momentum, weight_decay=opts.weight_decay)
 
     # You can use DataParallel() whether you use Multi-GPUs or not
-    model = nn.DataParallel(model).cuda()
+    if torch.cuda.is_available():
+        model = nn.DataParallel(model).cuda()
 
     # when training, use reduceLROnPlateau to reduce learning rate
     scheduler = lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=opts.lr_patience)
@@ -57,8 +58,8 @@ def main():
     # loss function
     criterion = criteria.ordLoss(device)
 
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
+    if not os.path.exists(output_directory):
+        os.makedirs(output_directory)
 
     # create log
     log_path = os.path.join(output_directory, 'logs',
@@ -125,7 +126,8 @@ def train(train_loader, model, criterion, optimizer, epoch, logger, device, opts
         input = input.to(device)
         target = target.to(device)
 
-        torch.cuda.synchronize()
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
         data_time = time.time() - end
 
         # compute pred

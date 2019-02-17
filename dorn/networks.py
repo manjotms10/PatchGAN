@@ -118,15 +118,21 @@ class SceneUnderstandingModule(nn.Module):
         weights_init(self.modules(), type='xavier')
 
     def forward(self, x):
-        x1 = self.encoder(x)
+        x1 = self.encoder(x).permute(0,1,3,2)
 
         x2 = self.aspp1(x)
         x3 = self.aspp2(x)
         x4 = self.aspp3(x)
         x5 = self.aspp4(x)
+        
+#         print(x1.shape)
+#         print(x2.shape)
+#         print(x3.shape)
+#         print(x4.shape)
+#         print(x5.shape)
 
         x6 = torch.cat((x1, x2, x3, x4, x5), dim=1)
-        # print('cat x6 size:', x6.size())
+#         print('cat x6 size:', x6.size())
         out = self.concat_process(x6)
         return out
 
