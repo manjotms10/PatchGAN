@@ -6,7 +6,7 @@ import torch
 from tensorboardX import SummaryWriter
 from torch.optim import lr_scheduler
 
-from data_loader import DataLoader
+from data_loader import DataLoader, KittiData
 from dorn.evaluation import AverageMeter, Result
 import utils
 import dorn.criterion as criteria
@@ -30,18 +30,20 @@ depth_maps_dir = "data/depth_maps/"
 output_directory = "checkpoints/"
 
 
-def create_loader():
-    train_loader = DataLoader(raw_data_dir, depth_maps_dir)
-    # val_loader =
-    return train_loader #, val_loader
+def create_loader(opts):
+    train_set = KittiData(raw_data_dir, depth_maps_dir)
+    val_set = KittiData(raw_data_dir, depth_maps_dir, mode='val')
+    train_loader = torch.utils.data.DataLoader(train_set, batch_size=opts.batch_size, shuffle=True, pin_memory=True)
+    val_loader = torch.utils.data.DataLoader(val_set, batch_size=1, shuffle=False, pin_memory=True)
+    return train_loader, val_loader
 
 
 def main():
-    train_loader = create_loader()
-
     model = DORN()
     opts = utils.get_opts()
-    
+
+    train_loader, val_loader = create_loader(opts)
+
     # different modules have different learning rate
     train_params = [{'params': model.get_1x_lr_params(), 'lr': opts.lr},
                     {'params': model.get_10x_lr_params(), 'lr': opts.lr * 10}]
