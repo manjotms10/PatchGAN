@@ -6,15 +6,12 @@ import torch
 from tensorboardX import SummaryWriter
 from torch.optim import lr_scheduler
 
-from data_loader import DataLoader, KittiData
+from data_loader import KittiData
 from dorn.evaluation import AverageMeter, Result
 import utils
 import dorn.criterion as criteria
 import os
 import torch.nn as nn
-
-import numpy as np
-import random
 
 from dorn.networks import DORN
 
