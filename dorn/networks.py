@@ -47,11 +47,11 @@ def weights_init(modules, type='xavier'):
             if m.bias is not None:
                 m.bias.data.zero_()
 
-    if isinstance(m, nn.Module):
+    if not isinstance(m, nn.Module):
+        init(m)
+    else:
         for m in modules:
             init(m)
-    else:
-        init(m)
 
 
 class FullImageEncoder(nn.Module):
