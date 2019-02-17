@@ -5,10 +5,25 @@ import numpy as np
 import os
 
 import torch
+from easydict import EasyDict
 from matplotlib import pyplot as plt
 from PIL import Image
 
 cmap = plt.cm.jet
+
+
+def get_opts():
+    opts = EasyDict()
+    opts.dataset = 'kitti'
+    opts.lr = 0.001
+    opts.momentum = 0.9
+    opts. weight_decay = 0.0005
+    opts.lr_patience = 2
+    opts.batch_size = 32
+    opts.epochs = 5
+    opts.print_freq = 1
+    return opts
+
 
 def get_output_directory(args):
     save_dir_root = os.path.join(os.path.dirname(os.path.abspath(__file__)))
@@ -29,12 +44,12 @@ the predicted depth value d(w, h) can be decoded as below.
 """
 
 
-def get_depth_sid(args, labels, device):
-    if args.dataset == 'kitti':
+def get_depth_sid(opts, labels, device):
+    if opts.dataset == 'kitti':
         min = 0.001
         max = 80.0
         K = 71.0
-    elif args.dataset == 'nyu':
+    elif opts.dataset == 'nyu':
         min = 0.02
         max = 80.0
         K = 68.0
@@ -49,12 +64,12 @@ def get_depth_sid(args, labels, device):
     return depth.float()
 
 
-def get_labels_sid(args, depth, device):
-    if args.dataset == 'kitti':
+def get_labels_sid(opts, depth, device):
+    if opts.dataset == 'kitti':
         alpha = 0.001
         beta = 80.0
         K = 71.0
-    elif args.dataset == 'nyu':
+    elif opts.dataset == 'nyu':
         alpha = 0.02
         beta = 10.0
         K = 68.0

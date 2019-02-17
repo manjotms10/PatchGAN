@@ -27,7 +27,7 @@ best_result.set_to_worst()
 
 raw_data_dir = "data/"
 depth_maps_dir = "data/depth_maps/"
-output_dir = "checkpoints/"
+output_directory = "checkpoints/"
 
 
 def create_loader():
@@ -37,27 +37,22 @@ def create_loader():
 
 
 def main():
-    global args, best_result, output_directory
-
     train_loader = create_loader()
 
     model = DORN()
-    lr = 0.001
-    momentum = 0.9
-    weight_decay = 0.0005
-    lr_patience = 2
+    opts = utils.get_opts()
     
     # different modules have different learning rate
-    train_params = [{'params': model.get_1x_lr_params(), 'lr': lr},
-                    {'params': model.get_10x_lr_params(), 'lr': lr * 10}]
+    train_params = [{'params': model.get_1x_lr_params(), 'lr': opts.lr},
+                    {'params': model.get_10x_lr_params(), 'lr': opts.lr * 10}]
 
-    optimizer = torch.optim.SGD(train_params, lr=lr, momentum=momentum, weight_decay=weight_decay)
+    optimizer = torch.optim.SGD(train_params, lr=opts.lr, momentum=opts.momentum, weight_decay=opts.weight_decay)
 
     # You can use DataParallel() whether you use Multi-GPUs or not
     model = nn.DataParallel(model).cuda()
 
     # when training, use reduceLROnPlateau to reduce learning rate
-    scheduler = lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=args.lr_patience)
+    scheduler = lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=opts.lr_patience)
 
     # loss function
     criterion = criteria.ordLoss(device)
@@ -83,7 +78,7 @@ def main():
             old_lr = float(param_group['lr'])
             logger.add_scalar('Lr/lr_' + str(i), old_lr, epoch)
 
-        train(train_loader, model, criterion, optimizer, epoch, logger)  # train for one epoch
+        train(train_loader, model, criterion, optimizer, epoch, logger, device, opts)  # train for one epoch
         # result, img_merge = validate(val_loader, model, epoch, logger)  # evaluate on validation set
 
         # remember best rmse and save checkpoint
@@ -117,18 +112,16 @@ def main():
 
 
 # train
-def train(train_loader, model, criterion, optimizer, epoch, logger, device):
+def train(train_loader, model, criterion, optimizer, epoch, logger, device, opts):
     average_meter = AverageMeter()
     model.train()  # switch to train mode
     end = time.time()
-    print_freq = 1
 
-    batch_size = 32
-    batch_num = len(train_loader.train_imgs) // batch_size
+    batch_num = len(train_loader.train_imgs) // opts.batch_size
 
     for i in range(batch_num):
 
-        input, target = train_loader.get_one_batch(batch_size)
+        input, target = train_loader.get_one_batch(opts.batch_size)
         input = input.to(device)
         target = target.to(device)
 
@@ -140,7 +133,7 @@ def train(train_loader, model, criterion, optimizer, epoch, logger, device):
 
         with torch.autograd.detect_anomaly():
             pred_d, pred_ord = model(input) 
-            target_c = utils.get_labels_sid(args, target, device)  # using sid, discretize the groundtruth
+            target_c = utils.get_labels_sid(opts, target, device)  # using sid, discretize the groundtruth
             loss = criterion(pred_ord, target_c)
             optimizer.zero_grad()
             loss.backward()  # compute gradient and do SGD step
@@ -151,12 +144,12 @@ def train(train_loader, model, criterion, optimizer, epoch, logger, device):
 
         # measure accuracy and record loss
         result = Result()
-        depth = utils.get_depth_sid(args, pred_d)
+        depth = utils.get_depth_sid(opts, pred_d)
         result.evaluate(depth.data, target.data)
         average_meter.update(result, gpu_time, data_time, input.size(0))
         end = time.time()
 
-        if (i + 1) % print_freq == 0:
+        if (i + 1) % opts.print_freq == 0:
             print('=> output: {}'.format(output_directory))
             print('Train Epoch: {0} [{1}/{2}]\t'
                   't_Data={data_time:.3f}({average.data_time:.3f}) '
@@ -182,7 +175,7 @@ def train(train_loader, model, criterion, optimizer, epoch, logger, device):
 
 
 # validation
-def validate(val_loader, model, epoch, logger):
+def validate(val_loader, model, epoch, logger, opts):
     average_meter = AverageMeter()
 
     model.eval()  # switch to evaluate mode
@@ -207,7 +200,7 @@ def validate(val_loader, model, epoch, logger):
 
         # measure accuracy and record loss
         result = Result()
-        pred = utils.get_depth_sid(args, pred)
+        pred = utils.get_depth_sid(opts, pred)
         result.evaluate(pred.data, target.data)
 
         average_meter.update(result, gpu_time, data_time, input.size(0))
@@ -225,7 +218,7 @@ def validate(val_loader, model, epoch, logger):
             filename = output_directory + '/comparison_' + str(epoch) + '.png'
             utils.save_image(img_merge, filename)
 
-        if (i + 1) % args.print_freq == 0:
+        if (i + 1) % opts.print_freq == 0:
             print('Test: [{0}/{1}]\t'
                   't_GPU={gpu_time:.3f}({average.gpu_time:.3f})\n\t'
                   'RMSE={result.rmse:.2f}({average.rmse:.2f}) '

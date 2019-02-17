@@ -47,7 +47,7 @@ def weights_init(modules, type='xavier'):
             if m.bias is not None:
                 m.bias.data.zero_()
 
-    if (isinstance(m, nn.Conv2d) or isinstance(m, nn.ConvTranspose2d) \
+    if (isinstance(m, nn.Conv2d) or isinstance(m, nn.ConvTranspose2d)
         or isinstance(m, nn.BatchNorm2d) or isinstance(m, nn.Linear)):
         init(m)
     elif isinstance(m, nn.Module):
