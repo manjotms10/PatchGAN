@@ -146,7 +146,6 @@ def train(train_loader, model, criterion, optimizer, epoch, logger, device, opts
         
         gpu_time = time.time() - end
 
-
         # measure accuracy and record loss
         result = Result()
         depth = utils.get_depth_sid(opts, pred_d, device)
@@ -155,7 +154,6 @@ def train(train_loader, model, criterion, optimizer, epoch, logger, device, opts
         end = time.time()
 
         if (i + 1) % opts.print_freq == 0:
-            print('=> output: {}'.format(output_directory))
             print('Train Epoch: {0} [{1}/{2}]\t'
                   't_Data={data_time:.3f}({average.data_time:.3f}) '
                   't_GPU={gpu_time:.3f}({average.gpu_time:.3f})\n\t'
