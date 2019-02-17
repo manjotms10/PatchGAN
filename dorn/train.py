@@ -151,7 +151,7 @@ def train(train_loader, model, criterion, optimizer, epoch, logger, device, opts
 
         # measure accuracy and record loss
         result = Result()
-        depth = utils.get_depth_sid(opts, pred_d)
+        depth = utils.get_depth_sid(opts, pred_d, device)
         result.evaluate(depth.data, target.data)
         average_meter.update(result, gpu_time, data_time, input.size(0))
         end = time.time()
@@ -227,7 +227,7 @@ def validate(val_loader, model, epoch, logger, opts):
 
         if (i + 1) % opts.print_freq == 0:
             print('Test: [{0}/{1}]\t'
-                  't_GPU={gpu_time:.3f}({average.gpu_time:.3f})\n\t'
+                  't_GPU={gpu_time:.3f}({average.gpu_time:.3f})\t'
                   'RMSE={result.rmse:.2f}({average.rmse:.2f}) '
                   'RML={result.absrel:.2f}({average.absrel:.2f}) '
                   'Log10={result.lg10:.3f}({average.lg10:.3f}) '

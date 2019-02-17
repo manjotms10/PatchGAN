@@ -100,7 +100,7 @@ class KittiData(Dataset):
         self.root_dir = root_dir
         self.depth_map_dir = depth_map_dir
         self.mode = mode
-        self.im_gt_paths = None
+        self.im_gt_paths = []
         self.size = size
 
         if self.mode == 'train':
@@ -119,8 +119,10 @@ class KittiData(Dataset):
         self.im_gt_paths = []
         for l in self.files:
             file_names = l.split()
-            self.im_gt_paths.append(file_names[0])
-            self.im_gt_paths.append(file_names[1])
+            for f in file_names:
+                im_path, gt_path = self.get_paths(f)
+                if os.path.exists(im_path) and os.path.exists(gt_path):
+                    self.im_gt_paths.append((im_path, gt_path))
 
     def __len__(self):
         return len(self.im_gt_paths)
@@ -202,7 +204,7 @@ class KittiData(Dataset):
         return img_path, depth_path
 
     def __getitem__(self, idx):
-        im_path, gt_path = self.get_paths(self.im_gt_paths[idx])
+        im_path, gt_path = self.im_gt_paths[idx]
 
         im = self.load(im_path)
         gt = self.load(gt_path, rgb=False)

@@ -19,9 +19,9 @@ def get_opts():
     opts.momentum = 0.9
     opts. weight_decay = 0.0005
     opts.lr_patience = 2
-    opts.batch_size = 1
-    opts.epochs = 5
-    opts.print_freq = 1
+    opts.batch_size = 3
+    opts.epochs = 10
+    opts.print_freq = 10
     return opts
 
 
@@ -60,7 +60,7 @@ def get_depth_sid(opts, labels, device):
     beta_ = torch.from_numpy(np.array(max_)).to(device)
     K_ = torch.from_numpy(np.array(K)).to(device)
 
-    depth = np.exp(np.log(alpha_) + np.log(beta_ / alpha_) * labels / K_)
+    depth = torch.exp(torch.log(alpha_) + torch.log(beta_ / alpha_) * labels / K_)
     return depth.float()
 
 
@@ -84,7 +84,6 @@ def get_labels_sid(opts, depth, device):
     labels = K * torch.log(depth / alpha) / torch.log(beta / alpha)
 
     labels = labels.to(device)
-    print(labels.shape)
     return labels.int()
 
 
