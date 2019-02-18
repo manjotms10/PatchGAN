@@ -41,6 +41,10 @@ def main():
     opts = utils.get_opts()
     epoch_tracker = utils.EpochTracker(epoch_file)
 
+    if epoch_tracker.epoch > 0:
+        name = output_directory + 'checkpoint-' + str(epoch_tracker.epoch) + '.pth.tar'
+        model.load_state_dict(torch.load(name))
+
     train_loader, val_loader = create_loader(opts)
 
     # different modules have different learning rate
@@ -62,6 +66,9 @@ def main():
     if not os.path.exists(output_directory):
         os.makedirs(output_directory)
 
+    best_txt = os.path.join(output_directory, 'best.txt')
+    config_txt = os.path.join(output_directory, 'config.txt')
+
     # create log
     log_path = os.path.join(output_directory, 'logs',
                             datetime.now().strftime('%b%d_%H-%M-%S') + '_' + socket.gethostname())
@@ -70,7 +77,7 @@ def main():
     os.makedirs(log_path)
     logger = SummaryWriter(log_path)
 
-    start_epoch = 0
+    start_epoch = epoch_tracker.epoch
 
     for epoch in range(start_epoch, opts.epochs):
 
@@ -80,7 +87,7 @@ def main():
             logger.add_scalar('Lr/lr_' + str(i), old_lr, epoch)
 
         train(train_loader, model, criterion, optimizer, epoch, logger, device, opts)  # train for one epoch
-        result, img_merge = validate(val_loader, model, epoch, logger)  # evaluate on validation set
+        result, img_merge = validate(val_loader, model, epoch, logger, opts)  # evaluate on validation set
 
         # remember best rmse and save checkpoint
         is_best = result.rmse < best_result.rmse
@@ -173,6 +180,8 @@ def train(train_loader, model, criterion, optimizer, epoch, logger, device, opts
             logger.add_scalar('Train/Delta1', result.delta1, current_step)
             logger.add_scalar('Train/Delta2', result.delta2, current_step)
             logger.add_scalar('Train/Delta3', result.delta3, current_step)
+
+        print("GPU:", torch.cuda.memory_allocated())
 
         if torch.cuda.is_available():
             torch.cuda.empty_cache()

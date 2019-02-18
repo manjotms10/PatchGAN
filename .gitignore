@@ -3,3 +3,4 @@
 data/*
 checkpoints/*
 .ipynb_checkpoints/*
+*.zip
