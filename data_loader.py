@@ -142,7 +142,8 @@ class KittiData(Dataset):
             transforms.Rotate(angle),
             transforms.Resize(s),
             transforms.CenterCrop(self.size),
-            transforms.HorizontalFlip(do_flip)
+            transforms.HorizontalFlip(do_flip),
+            transforms.Resize(0.25)
         ])
 
         im_ = transform(im)
@@ -169,7 +170,8 @@ class KittiData(Dataset):
         transform = transforms.Compose([
             transforms.Crop(130, 10, 240, 1200),
             transforms.Resize(460 / 240, interpolation='bilinear'),
-            transforms.CenterCrop(self.size)
+            transforms.CenterCrop(self.size),
+            transforms.Resize(0.25)
         ])
 
         im_ = transform(im)
