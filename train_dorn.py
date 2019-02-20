@@ -37,25 +37,44 @@ def create_loader(opts):
 
 
 def main():
+    global best_result
     model = DORN()
     opts = utils.get_opts()
     epoch_tracker = utils.EpochTracker(epoch_file)
 
-    if epoch_tracker.epoch > 0:
-        name = output_directory + 'checkpoint-' + str(epoch_tracker.epoch) + '.pth.tar'
-        model.load_state_dict(torch.load(name))
-
     train_loader, val_loader = create_loader(opts)
 
-    # different modules have different learning rate
-    train_params = [{'params': model.get_1x_lr_params(), 'lr': opts.lr},
-                    {'params': model.get_10x_lr_params(), 'lr': opts.lr * 10}]
+    name = output_directory + 'checkpoint-' + str(epoch_tracker.epoch) + '.pth.tar'
+    if os.path.exists(name):
+        checkpoint = torch.load(name)
 
-    optimizer = torch.optim.SGD(train_params, lr=opts.lr, momentum=opts.momentum, weight_decay=opts.weight_decay)
+        start_epoch = checkpoint['epoch'] + 1
+        best_result = checkpoint['best_result']
+        optimizer = checkpoint['optimizer']
+        iteration = checkpoint['iteration']
 
-    # You can use DataParallel() whether you use Multi-GPUs or not
-    if torch.cuda.is_available():
-        model = nn.DataParallel(model).cuda()
+        # solve 'out of memory'
+        model = checkpoint['model']
+
+        print("=> loaded checkpoint (epoch {})".format(checkpoint['epoch']))
+
+        # clear memory
+        del checkpoint
+        # del model_dict
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    else:
+        start_epoch = 0
+        iteration = 0
+        # different modules have different learning rate
+        train_params = [{'params': model.get_1x_lr_params(), 'lr': opts.lr},
+                        {'params': model.get_10x_lr_params(), 'lr': opts.lr * 10}]
+
+        optimizer = torch.optim.SGD(train_params, lr=opts.lr, momentum=opts.momentum, weight_decay=opts.weight_decay)
+
+        # You can use DataParallel() whether you use Multi-GPUs or not
+        if torch.cuda.is_available():
+            model = nn.DataParallel(model).cuda()
 
     # when training, use reduceLROnPlateau to reduce learning rate
     scheduler = lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=opts.lr_patience)
@@ -77,8 +96,6 @@ def main():
     os.makedirs(log_path)
     logger = SummaryWriter(log_path)
 
-    start_epoch = epoch_tracker.epoch
-
     for epoch in range(start_epoch, opts.epochs):
 
         # remember change of the learning rate
@@ -86,9 +103,9 @@ def main():
             old_lr = float(param_group['lr'])
             logger.add_scalar('Lr/lr_' + str(i), old_lr, epoch)
 
-        train(train_loader, model, criterion, optimizer, epoch, logger, device, opts)  # train for one epoch
+        train(train_loader, model, criterion, optimizer, epoch, logger, device, opts, iteration)  # train for one epoch
         result, img_merge = validate(val_loader, model, epoch, logger, opts)  # evaluate on validation set
-
+        iteration = 0
         # remember best rmse and save checkpoint
         is_best = result.rmse < best_result.rmse
         if is_best:
@@ -111,6 +128,7 @@ def main():
             'model': model,
             'best_result': best_result,
             'optimizer': optimizer,
+            'iteration': iteration
         }, is_best, epoch, output_directory)
 
         epoch_tracker.write(epoch)
@@ -121,7 +139,7 @@ def main():
 
 
 # train
-def train(train_loader, model, criterion, optimizer, epoch, logger, device, opts):
+def train(train_loader, model, criterion, optimizer, epoch, logger, device, opts, iteration):
     average_meter = AverageMeter()
     model.train()  # switch to train mode
     end = time.time()
@@ -129,6 +147,8 @@ def train(train_loader, model, criterion, optimizer, epoch, logger, device, opts
     batch_num = len(train_loader)
 
     for i, (input, target) in enumerate(train_loader):
+        if i < iteration:
+            continue
 
         input = input.to(device)
         target = target.to(device)
@@ -159,6 +179,16 @@ def train(train_loader, model, criterion, optimizer, epoch, logger, device, opts
         result.evaluate(depth.data, target.data)
         average_meter.update(result, gpu_time, data_time, input.size(0))
         end = time.time()
+
+        if (i + 1) % opts.save_freq == 0:
+            utils.save_checkpoint({
+            'args': opts,
+            'epoch': epoch,
+            'model': model,
+            'best_result': best_result,
+            'optimizer': optimizer,
+            'iteration':i+1
+            }, False, epoch, output_directory)
 
         if (i + 1) % opts.print_freq == 0:
             print('Train Epoch: {0} [{1}/{2}]\t'

@@ -143,7 +143,6 @@ class KittiData(Dataset):
             transforms.Resize(s),
             transforms.CenterCrop(self.size),
             transforms.HorizontalFlip(do_flip),
-            transforms.Resize(0.25)
         ])
 
         im_ = transform(im)
@@ -170,8 +169,7 @@ class KittiData(Dataset):
         transform = transforms.Compose([
             transforms.Crop(130, 10, 240, 1200),
             transforms.Resize(460 / 240, interpolation='bilinear'),
-            transforms.CenterCrop(self.size),
-            transforms.Resize(0.25)
+            transforms.CenterCrop(self.size)
         ])
 
         im_ = transform(im)
@@ -219,3 +217,63 @@ class KittiData(Dataset):
         im = im.permute(2,0,1)
 
         return im, gt
+
+
+class NYUDataset(Dataset):
+    '''
+    all the images are reduced to 288 x 384 from 480 x 640,
+    And the model are trained on random crops of size 257x353.
+    '''
+    iheight, iwidth = 480, 640  # raw image size
+    alpha, beta = 0.02, 10.0  # NYU Depth, min depth is 0.02m, max depth is 10.0m
+    K = 68  # NYU is 68, but in paper, 80 is good
+    color_jitter = transforms.ColorJitter(0.4, 0.4, 0.4)
+
+    def __init__(self, root, type, sparsifier=None, modality='rgb'):
+        super(NYUDataset, self).__init__(root, type, sparsifier, modality)
+        self.output_size = (257, 353)
+
+    def train_transform(self, rgb, depth):
+        s = np.random.uniform(1.0, 1.5)  # random scaling
+        depth_np = depth / s
+        angle = np.random.uniform(-5.0, 5.0)  # random rotation degrees
+        do_flip = np.random.uniform(0.0, 1.0) < 0.5  # random horizontal flip
+
+        # perform 1st step of data augmentation
+        transform = transforms.Compose([
+            transforms.Resize(288.0 / self.iheight),  # this is for computational efficiency, since rotation can be slow
+            transforms.Rotate(angle),
+            transforms.Resize(s),
+            transforms.CenterCrop(self.output_size),
+            transforms.HorizontalFlip(do_flip)
+        ])
+        rgb_np = transform(rgb)
+        rgb_np = self.color_jitter(rgb_np)  # random color jittering
+        rgb_np = np.asfarray(rgb_np, dtype='float') / 255
+        depth_np = transform(depth_np)
+
+        return rgb_np, depth_np
+
+    def val_transform(self, rgb, depth):
+        depth_np = depth
+        transform = transforms.Compose([
+            transforms.Resize(288.0 / self.iheight),
+            transforms.CenterCrop(self.output_size),
+        ])
+        rgb_np = transform(rgb)
+        rgb_np = np.asfarray(rgb_np, dtype='float') / 255
+        depth_np = transform(depth_np)
+
+        return rgb_np, depth_np
+
+    def load(self, path, rgb=True):
+
+        with open(path, 'rb') as f:
+            img = Image.open(f)
+            if rgb:
+                return img.convert('RGB')
+            else:
+                return img.convert('I')
+
+    def __getitem__(self, item):
+        pass
