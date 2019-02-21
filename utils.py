@@ -19,7 +19,7 @@ def get_opts():
     opts.momentum = 0.9
     opts.weight_decay = 0.0005
     opts.lr_patience = 2
-    opts.batch_size = 3
+    opts.batch_size = 8
     opts.epochs = 10
     opts.print_freq = 1
     opts.save_freq = 500

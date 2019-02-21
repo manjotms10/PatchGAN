@@ -1,7 +1,7 @@
 import numpy as np
 import os
 import glob
-import cv2
+# import cv2
 import matplotlib.pyplot as plt
 import torch
 from PIL import Image
