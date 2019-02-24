@@ -4,6 +4,9 @@ import torch.nn.functional as F
 import torchvision.models
 import collections
 import math
+import time
+
+from data_loader import DataLoader
 
 def weights_init(m):
     # Initialize filters with Gaussian random weights
@@ -285,7 +288,6 @@ def choose_decoder(decoder, in_channels):
     else:
         assert False, "invalid option for decoder: {}".format(decoder)
 
-
 class ResNet(nn.Module):
     def __init__(self, dataset = 'kitti', layers = 50, decoder = 'upproj', output_size=(228, 304), in_channels=3, pretrained=True):
 
@@ -380,9 +382,28 @@ class ResNet(nn.Module):
             for k in b[j].parameters():
                 if k.requires_grad:
                     yield k
-import time
-from data_loader import DataLoader
-data = DataLoader('', '')
+
+
+"""
+Define Loss functions here
+"""
+class ScaleInvariantError(nn.Module):
+    """
+    Scale invariant error defined in Eigen's paper!
+    """
+
+    def __init__(self, lamada=0.5):
+        super(ScaleInvariantError, self).__init__()
+        self.lamada = lamada
+        return
+
+    def forward(self, y_true, y_pred):
+        first_log = torch.log(torch.clamp(y_pred, 0, 1))
+        second_log = torch.log(torch.clamp(y_true, 0, 1))
+        d = first_log - second_log
+        loss = torch.mean(d * d) - self.lamada * torch.mean(d) * torch.mean(d)
+        return loss
+
 
 class MaskedMSELoss(nn.Module):
     def __init__(self):
@@ -434,8 +455,11 @@ class berHuLoss(nn.Module):
 
         return self.loss
 
+print("=> Loading Data ...")
+data = DataLoader('', '')
+
 print("=> creating Model")
-model = ResNet(output_size=(90, 270))
+model = ResNet(layers=152, decoder='fasterupproj', output_size=(90, 270), pretrained=True)
 print("=> model created.")
 start_epoch = 0
 lr = 0.001
@@ -449,44 +473,53 @@ optimizer = torch.optim.SGD(train_params, lr=lr, weight_decay=4e-5)
 model = nn.DataParallel(model).cuda()
 
 # Define Loss Function
-criterion = MaskedL1Loss()
+criterion_L1 = MaskedL1Loss()
+criterion_berHu = berHuLoss()
+criterion_SI = ScaleInvariantError()
+criterion_MSE = MaskedMSELoss()
 
-def train(train_loader, model, criterion, optimizer, epoch):
+def train(train_loader, model, criterion_L1, criterion_MSE, criterion_berHu, criterion_SI, optimizer, epoch, batch_size=64):
     model.train()  # switch to train mode
 
-    for iter_ in range(43000//32):
+    for iter_ in range(43000//batch_size):
         # Adjust Learning Rate
         if iter_ % 100 == 0:
             for param_group in optimizer.param_groups:
-                param_group['lr'] *= 0.99
+                param_group['lr'] *= 0.98
         
-        input, target = next(train_loader.get_one_batch(32))
+        input, target = next(train_loader.get_one_batch(batch_size))
         input, target = input.cuda(), target.cuda()
         torch.cuda.synchronize()
         
         pred = model(input)
 
-        loss = criterion(pred, target)
+        loss_L1 = criterion_L1(pred, target)
+        loss_MSE = criterion_MSE(pred, target)
+        loss_berHu = criterion_berHu(pred, target)
+        #loss_SI = criterion_SI(pred, target)
+
+        loss = loss_L1 + loss_MSE + loss_berHu# + loss_SI
         optimizer.zero_grad()
-        loss.backward()
+        loss_L1.backward()
         optimizer.step()
         torch.cuda.synchronize()
-        
+         
+        #print("L1 = {}, MSE = {}, berHu = {}".format(loss_L1.item(), loss_MSE.item(), loss_berHu.item()))
         if (iter_ + 1) % 10 == 0:
-            print('Train Epoch: {0} Batch: [{1}/{2}]\t'
-                  'Loss={Loss:.5f}'.format(
+            #pass
+            print('Train Epoch: {} Batch: [{}/{}]\t'
+                  'L1 Loss={:0.3f}, MSE Loss={:0.3f}, berHu Loss={:0.3f}'.format(
                 epoch, iter_ + 1, 43000//32, 
-                Loss=loss.item()))
+                loss_L1.item(), loss_MSE.item(), loss_berHu.item()))
 
-for i in range(25):
+for i in range(10):
     # Train the Model
-    train(data, model, criterion, optimizer, i)
+    train(data, model, criterion_L1, criterion_MSE, criterion_berHu, criterion_SI, optimizer, i, 64)
     
     # Save Checkpoint
     torch.save({
             'epoch': i,
             'model_state_dict': model.state_dict(),
             'optimizer_state_dict': optimizer.state_dict(),
-            'loss': loss,
             }, './ResNet.pth')
 
