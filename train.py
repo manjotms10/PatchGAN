@@ -331,7 +331,7 @@ class ResNet(nn.Module):
         self.upSample = choose_decoder(decoder, num_channels // 2)
 
         # setting bias=true doesn't improve accuracy
-        self.conv3 = nn.Conv2d(num_channels // 32, 1, kernel_size=3, stride=1, padding=1, bias=False)
+        self.conv3 = nn.Conv2d(num_channels // 32, 3, kernel_size=3, stride=1, padding=1, bias=False)
         self.bilinear = nn.Upsample(size=self.output_size, mode='bilinear', align_corners=True)
 
         # weight init
@@ -382,6 +382,39 @@ class ResNet(nn.Module):
             for k in b[j].parameters():
                 if k.requires_grad:
                     yield k
+
+
+class Discriminator(nn.Module):
+    """
+    Discriminator for FCRN
+    """
+    def __init__(self, n_in):
+        super(Discriminator, self).__init__()
+        self.n_in = n_in
+        self.modules = []
+
+        self.modules += [   nn.Conv2d(self.n_in, 32, kernel_size=3, stride=(1, 1), padding=(2, 2)),
+                            nn.MaxPool2d(kernel_size=(2, 2)),
+                            nn.LeakyReLU(0.2, True),
+                            nn.Conv2d(32, 32, 3, 1, 1),
+                            nn.MaxPool2d(kernel_size=(2,2)),
+                            nn.LeakyReLU(0.2, True),
+                            nn.Conv2d(32, 32, 3, 1, 1),
+                            nn.MaxPool2d(kernel_size=(2,2)),
+                            nn.LeakyReLU(0.2, True),
+                            nn.Conv2d(32, 32, 3, 1, 1),
+                            nn.MaxPool2d(kernel_size=(2,2)),
+                            nn.LeakyReLU(0.2, True),
+        ]
+
+        self.model = nn.Sequential(*self.modules)
+        self.fc = nn.Linear(32 * 4, 1)
+        
+    def forward(self, x):
+        x = self.model(x)
+        x = x.view(x.size(0), -1)
+        x = self.fc(x)
+        return torch.sigmoid(x)
 
 
 """
@@ -460,6 +493,9 @@ data = DataLoader('', '')
 
 print("=> creating Model")
 model = ResNet(layers=152, decoder='fasterupproj', output_size=(90, 270), pretrained=True)
+discriminator = Discriminator(3)
+discriminator.apply(weights_init)
+
 print("=> model created.")
 start_epoch = 0
 lr = 0.001
@@ -468,15 +504,22 @@ train_params = [{'params': model.get_1x_lr_params(), 'lr': lr},
                 {'params': model.get_10x_lr_params(), 'lr': lr * 10}]
 
 optimizer = torch.optim.SGD(train_params, lr=lr, weight_decay=4e-5)
+optimizer_D = torch.optim.Adam(discriminator.parameters(), lr=lr)
 
 # You can use DataParallel() whether you use Multi-GPUs or not
 model = nn.DataParallel(model).cuda()
+discriminator = discriminator.cuda()
 
 # Define Loss Function
 criterion_L1 = MaskedL1Loss()
 criterion_berHu = berHuLoss()
 criterion_SI = ScaleInvariantError()
 criterion_MSE = MaskedMSELoss()
+criterion_D = nn.L1Loss()
+
+batch_size = 64
+valid_T = torch.ones(batch_size, 1).cuda()
+zeros_T = torch.zeros(batch_size, 1).cuda()
 
 def train(train_loader, model, criterion_L1, criterion_MSE, criterion_berHu, criterion_SI, optimizer, epoch, batch_size=64):
     model.train()  # switch to train mode
@@ -498,17 +541,34 @@ def train(train_loader, model, criterion_L1, criterion_MSE, criterion_berHu, cri
         loss_berHu = criterion_berHu(pred, target)
         #loss_SI = criterion_SI(pred, target)
 
-        loss = loss_L1 + loss_MSE + loss_berHu# + loss_SI
+        loss_D = 0
+        for j in range(27):
+            row = 30* (j % 9)
+            col = 30* (j //3)
+            patch_fake = pred[:, :, row:row+30, col:col+30]
+            patch_real = target[:, :, row:row+30, col:col+30]
+            pred_fake = discriminator(patch_fake.detach())
+            pred_real = discriminator(patch_real)
+            loss_D_fake = criterion_D(pred_fake, zeros_T)
+            loss_D_real = criterion_D(pred_real, valid_T)
+            loss_D += 0.5 * (loss_D_fake + loss_D_real)
+
+        loss = loss_L1 + loss_MSE + loss_berHu
         optimizer.zero_grad()
+        optimizer_D.zero_grad()
+
         loss_L1.backward()
+        loss_D.backward()
+
         optimizer.step()
+        optimizer_D.step()
+
         torch.cuda.synchronize()
          
         #print("L1 = {}, MSE = {}, berHu = {}".format(loss_L1.item(), loss_MSE.item(), loss_berHu.item()))
         if (iter_ + 1) % 10 == 0:
             #pass
-            print('Train Epoch: {} Batch: [{}/{}]\t'
-                  'L1 Loss={:0.3f}, MSE Loss={:0.3f}, berHu Loss={:0.3f}'.format(
+            print('Train Epoch: {} Batch: [{}/{}],    L1 Loss={:0.3f}, MSE Loss={:0.3f}, berHu Loss={:0.3f}'.format(
                 epoch, iter_ + 1, 43000//32, 
                 loss_L1.item(), loss_MSE.item(), loss_berHu.item()))
 
