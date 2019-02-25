@@ -488,8 +488,10 @@ class berHuLoss(nn.Module):
 
         return self.loss
 
+raw_data_dir = "data/"
+depth_maps_dir = "data/depth_maps/"
 print("=> Loading Data ...")
-data = DataLoader('', '')
+data = DataLoader(raw_data_dir, depth_maps_dir)
 
 print("=> creating Model")
 model = ResNet(layers=152, decoder='fasterupproj', output_size=(90, 270), pretrained=True)
@@ -517,7 +519,7 @@ criterion_SI = ScaleInvariantError()
 criterion_MSE = MaskedMSELoss()
 criterion_D = nn.L1Loss()
 
-batch_size = 64
+batch_size = 16
 valid_T = torch.ones(batch_size, 1).cuda()
 zeros_T = torch.zeros(batch_size, 1).cuda()
 
@@ -531,6 +533,7 @@ def train(train_loader, model, criterion_L1, criterion_MSE, criterion_berHu, cri
                 param_group['lr'] *= 0.98
         
         input, target = next(train_loader.get_one_batch(batch_size))
+        input, target = input.float(), target.float()
         input, target = input.cuda(), target.cuda()
         torch.cuda.synchronize()
         
@@ -542,16 +545,17 @@ def train(train_loader, model, criterion_L1, criterion_MSE, criterion_berHu, cri
         #loss_SI = criterion_SI(pred, target)
 
         loss_D = 0
-        for j in range(27):
-            row = 30* (j % 9)
-            col = 30* (j //3)
-            patch_fake = pred[:, :, row:row+30, col:col+30]
-            patch_real = target[:, :, row:row+30, col:col+30]
-            pred_fake = discriminator(patch_fake.detach())
-            pred_real = discriminator(patch_real)
-            loss_D_fake = criterion_D(pred_fake, zeros_T)
-            loss_D_real = criterion_D(pred_real, valid_T)
-            loss_D += 0.5 * (loss_D_fake + loss_D_real)
+        for a in range(3):
+            for b in range(9):
+                row = 30 * a
+                col = 30 * b
+                patch_fake = pred[:, :, row:row+30, col:col+30]
+                patch_real = target[:, :, row:row+30, col:col+30]
+                pred_fake = discriminator(patch_fake.detach())
+                pred_real = discriminator(patch_real)
+                loss_D_fake = criterion_D(pred_fake, zeros_T)
+                loss_D_real = criterion_D(pred_real, valid_T)
+                loss_D += 0.5 * (loss_D_fake + loss_D_real)
 
         loss = loss_L1 + loss_MSE + loss_berHu
         optimizer.zero_grad()
@@ -574,7 +578,7 @@ def train(train_loader, model, criterion_L1, criterion_MSE, criterion_berHu, cri
 
 for i in range(10):
     # Train the Model
-    train(data, model, criterion_L1, criterion_MSE, criterion_berHu, criterion_SI, optimizer, i, 64)
+    train(data, model, criterion_L1, criterion_MSE, criterion_berHu, criterion_SI, optimizer, i, batch_size)
     
     # Save Checkpoint
     torch.save({
@@ -582,4 +586,3 @@ for i in range(10):
             'model_state_dict': model.state_dict(),
             'optimizer_state_dict': optimizer.state_dict(),
             }, './ResNet.pth')
-
