@@ -488,47 +488,25 @@ class berHuLoss(nn.Module):
 
         return self.loss
 
-raw_data_dir = "data/"
-depth_maps_dir = "data/depth_maps/"
-print("=> Loading Data ...")
-data = DataLoader(raw_data_dir, depth_maps_dir)
+    
+def set_requires_grad(net, requires_grad=False):
+    if net is not None:
+        for param in net.parameters():
+            param.requires_grad = requires_grad
 
-print("=> creating Model")
-model = ResNet(layers=152, decoder='fasterupproj', output_size=(90, 270), pretrained=True)
-discriminator = Discriminator(3)
-discriminator.apply(weights_init)
-
-print("=> model created.")
-start_epoch = 0
-lr = 0.001
-
-train_params = [{'params': model.get_1x_lr_params(), 'lr': lr},
-                {'params': model.get_10x_lr_params(), 'lr': lr * 10}]
-
-optimizer = torch.optim.SGD(train_params, lr=lr, weight_decay=4e-5)
-optimizer_D = torch.optim.Adam(discriminator.parameters(), lr=lr)
-
-# You can use DataParallel() whether you use Multi-GPUs or not
-model = nn.DataParallel(model).cuda()
-discriminator = discriminator.cuda()
-
-# Define Loss Function
-criterion_L1 = MaskedL1Loss()
-criterion_berHu = berHuLoss()
-criterion_SI = ScaleInvariantError()
-criterion_MSE = MaskedMSELoss()
-criterion_D = nn.L1Loss()
-
-batch_size = 16
-valid_T = torch.ones(batch_size, 1).cuda()
-zeros_T = torch.zeros(batch_size, 1).cuda()
-
-def train(train_loader, model, criterion_L1, criterion_MSE, criterion_berHu, criterion_SI, optimizer, epoch, batch_size=64):
+def train(train_loader, model, discriminator, criterion_L1, criterion_MSE, 
+          criterion_berHu, criterion_GAN, optimizer, optimizer_D, epoch, batch_size):
     model.train()  # switch to train mode
-
-    for iter_ in range(43000//batch_size):
+    eval_mode = False
+    num_batches = len(train_loader)// batch_size
+    init_lr = optimizer.param_groups[0]['lr']
+    
+    valid_T = torch.ones(batch_size, 1).cuda()
+    zeros_T = torch.zeros(batch_size, 1).cuda()
+    
+    for iter_ in range(num_batches):
         # Adjust Learning Rate
-        if iter_ % 100 == 0:
+        if iter_ % 1000 == 0 and optimizer.param_groups[0]['lr'] > init_lr/10.0:
             for param_group in optimizer.param_groups:
                 param_group['lr'] *= 0.98
         
@@ -537,13 +515,33 @@ def train(train_loader, model, criterion_L1, criterion_MSE, criterion_berHu, cri
         input, target = input.cuda(), target.cuda()
         torch.cuda.synchronize()
         
+        optimizer.zero_grad()
+        
         pred = model(input)
-
+        
         loss_L1 = criterion_L1(pred, target)
         loss_MSE = criterion_MSE(pred, target)
         loss_berHu = criterion_berHu(pred, target)
         #loss_SI = criterion_SI(pred, target)
-
+        
+        set_requires_grad(discriminator, False)
+        
+        loss_adv = 0
+        
+        for a in range(3):
+            for b in range(9):
+                row = 30 * a
+                col = 30 * b
+                patch_fake = pred[:, :, row:row+30, col:col+30]
+                pred_fake = discriminator(patch_fake)
+                loss_adv += criterion_GAN(pred_fake, valid_T)
+    
+        loss_gen = loss_L1 + loss_adv
+        loss_gen.backward()
+        optimizer.step()
+        
+        set_requires_grad(discriminator, True)
+        optimizer_D.zero_grad()
         loss_D = 0
         for a in range(3):
             for b in range(9):
@@ -553,33 +551,106 @@ def train(train_loader, model, criterion_L1, criterion_MSE, criterion_berHu, cri
                 patch_real = target[:, :, row:row+30, col:col+30]
                 pred_fake = discriminator(patch_fake.detach())
                 pred_real = discriminator(patch_real)
-                loss_D_fake = criterion_D(pred_fake, zeros_T)
-                loss_D_real = criterion_D(pred_real, valid_T)
+                loss_D_fake = criterion_GAN(pred_fake, zeros_T)
+                loss_D_real = criterion_GAN(pred_real, valid_T)
                 loss_D += 0.5 * (loss_D_fake + loss_D_real)
-
-        loss = loss_L1 + loss_MSE + loss_berHu
-        optimizer.zero_grad()
-        optimizer_D.zero_grad()
-
-        loss_L1.backward()
+        
         loss_D.backward()
-
-        optimizer.step()
         optimizer_D.step()
 
         torch.cuda.synchronize()
          
-        #print("L1 = {}, MSE = {}, berHu = {}".format(loss_L1.item(), loss_MSE.item(), loss_berHu.item()))
         if (iter_ + 1) % 10 == 0:
-            #pass
-            print('Train Epoch: {} Batch: [{}/{}],    L1 Loss={:0.3f}, MSE Loss={:0.3f}, berHu Loss={:0.3f}'.format(
-                epoch, iter_ + 1, 43000//32, 
-                loss_L1.item(), loss_MSE.item(), loss_berHu.item()))
+            print('Train Epoch: {} Batch: [{}/{}], ADV:{:0.3f} L1 ={:0.3f}, MSE={:0.3f}, berHu={:0.3f}, Disc:{:0.3f}'.format(
+                epoch, iter_ + 1, num_batches, loss_adv.item(),
+                loss_L1.item(), loss_MSE.item(), loss_berHu.item(), loss_D.item()))
 
-for i in range(10):
-    # Train the Model
-    train(data, model, criterion_L1, criterion_MSE, criterion_berHu, criterion_SI, optimizer, i, batch_size)
+            
+def validate(val_loader, model, discriminator, criterion_L1, criterion_MSE, criterion_berHu, criterion_D, batch_size=64):
+    model.eval()  # switch to evaluate mode
+    discriminator.eval()
     
+    valid_T = torch.ones(batch_size, 1).cuda()
+    zeros_T = torch.zeros(batch_size, 1).cuda()
+    
+    num_batches = len(val_loader) // batch_size
+    total_losses = {"l1":0, "mse":0, "berHu":0, "adv":0}
+    for i in range(num_batches):
+
+        input, target = next(val_loader.get_one_batch(batch_size))
+        input, target = input.float(), target.float()
+        input, target = input.cuda(), target.cuda()
+        
+        torch.cuda.synchronize()
+
+        # compute output
+        end = time.time()
+        with torch.no_grad():
+            pred = model(input)
+            
+        torch.cuda.synchronize()
+        
+        loss_L1 = criterion_L1(pred, target)
+        loss_MSE = criterion_MSE(pred, target)
+        loss_berHu = criterion_berHu(pred, target)
+        
+        loss_adv = 0
+        for a in range(3):
+            for b in range(9):
+                row = 30 * a
+                col = 30 * b
+                patch_fake = pred[:, :, row:row+30, col:col+30]
+                pred_fake = discriminator(patch_fake)
+                loss_adv += criterion_GAN(pred_fake, valid_T)
+                    
+        total_losses["l1"] += loss_l1
+        total_losses["mse"] += loss_MSE
+        total_losses["berHu"] += loss_berHu
+        total_losses["adv"] += loss_adv
+    
+    for key in total_losses.keys():
+        total_losses[key] /= len(val_loader)
+    
+    return total_losses
+
+raw_data_dir = "data/"
+depth_maps_dir = "data/depth_maps/"
+print("=> Loading Data ...")
+train_loader = DataLoader(raw_data_dir, depth_maps_dir)
+
+print("=> creating Model")
+model = ResNet(layers=152, decoder='fasterupproj', output_size=(90, 270), pretrained=True)
+discriminator = Discriminator(3)
+discriminator.apply(weights_init)
+
+print("=> model created.")
+start_epoch = 0
+init_lr = 0.001
+
+train_params = [{'params': model.get_1x_lr_params(), 'lr': init_lr},
+                {'params': model.get_10x_lr_params(), 'lr': init_lr * 10}]
+
+optimizer = torch.optim.SGD(train_params, lr=init_lr, weight_decay=4e-5)
+optimizer_D = torch.optim.Adam(discriminator.parameters(), lr=init_lr)
+
+# You can use DataParallel() whether you use Multi-GPUs or not
+model = nn.DataParallel(model).cuda()
+discriminator = discriminator.cuda()
+
+# Define Loss Function
+criterion_L1 = MaskedL1Loss()
+criterion_berHu = berHuLoss()
+# criterion_SI = ScaleInvariantError()
+criterion_MSE = MaskedMSELoss()
+criterion_GAN = nn.BCELoss()
+
+batch_size = 16
+
+for epoch in range(10):
+    # Train the Model
+    train(train_loader, model, discriminator, criterion_L1, criterion_MSE, criterion_berHu, 
+          criterion_GAN, optimizer, optimizer_D, epoch, batch_size)
+     
     # Save Checkpoint
     torch.save({
             'epoch': i,
