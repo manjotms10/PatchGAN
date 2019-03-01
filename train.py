@@ -1,3 +1,5 @@
+import numpy as np
+import cv2
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -5,6 +7,7 @@ import torchvision.models
 import collections
 import math
 import time
+import pickle
 
 from data_loader import DataLoader
 
@@ -494,15 +497,28 @@ def set_requires_grad(net, requires_grad=False):
         for param in net.parameters():
             param.requires_grad = requires_grad
 
-def train(train_loader, model, discriminator, criterion_L1, criterion_MSE, 
-          criterion_berHu, criterion_GAN, optimizer, optimizer_D, epoch, batch_size):
+def save_image(model, x, batch, mode="train"):
+    pred = model(x)
+    pred *= 100
+    npimg = pred.cpu().detach().numpy()
+    npimg = np.transpose(npimg, (0, 2, 3, 1))
+    cv2.imwrite('saved_images/%s_image_%d.jpg'%(mode, batch), npimg[0])
+
+
+def train(train_loader, val_loader, model, discriminator, criterion_L1, criterion_MSE, 
+          criterion_berHu, criterion_GAN, optimizer, optimizer_D, epoch, batch_size, val_frequency=10):
     model.train()  # switch to train mode
     eval_mode = False
     num_batches = len(train_loader)// batch_size
     init_lr = optimizer.param_groups[0]['lr']
     
+    total_losses_log = {"l1":0, "mse":0, "berHu":0, "adv":0}
+    
     valid_T = torch.ones(batch_size, 1).cuda()
     zeros_T = torch.zeros(batch_size, 1).cuda()
+    
+    train_loss_list = []
+    val_loss_list = []
     
     for iter_ in range(num_batches):
         # Adjust Learning Rate
@@ -559,22 +575,45 @@ def train(train_loader, model, discriminator, criterion_L1, criterion_MSE,
         optimizer_D.step()
 
         torch.cuda.synchronize()
+        
+        total_losses_log["l1"] += loss_L1.item()
+        total_losses_log["mse"] += loss_MSE.item()
+        total_losses_log["berHu"] += loss_berHu.item()
+        total_losses_log["adv"] += loss_adv.item()
          
         if (iter_ + 1) % 10 == 0:
+            save_image(model, input, iter_)
             print('Train Epoch: {} Batch: [{}/{}], ADV:{:0.3f} L1 ={:0.3f}, MSE={:0.3f}, berHu={:0.3f}, Disc:{:0.3f}'.format(
                 epoch, iter_ + 1, num_batches, loss_adv.item(),
                 loss_L1.item(), loss_MSE.item(), loss_berHu.item(), loss_D.item()))
+        
+        if (iter_ + 1) % val_frequency == 0:
+            val_loss = validate(val_loader, model, discriminator, criterion_L1, criterion_MSE, criterion_berHu, criterion_GAN, batch_size, iter_)
+            for key in total_losses_log.keys():
+                total_losses_log[key] /= (val_frequency * batch_size)
+            train_loss_list.append(total_losses_log)
+            val_loss_list.append(val_loss)
+            save_losses(train_loss_list, val_loss_list)
+            print("TRAIN:- ", total_losses_log)
+            print("VAL :- ", val_loss)
+            total_losses_log = {"l1":0, "mse":0, "berHu":0, "adv":0}
 
-            
-def validate(val_loader, model, discriminator, criterion_L1, criterion_MSE, criterion_berHu, criterion_D, batch_size=64):
+def save_losses(train_loss_list, val_loss_list):
+    out = {"train_loss": train_loss_list, "val_loss":val_loss_list}
+    with open("losses.pkl", "wb") as log:
+        pickle.dump(out, log)
+        
+def validate(val_loader, model, discriminator, criterion_L1, criterion_MSE, 
+             criterion_berHu, criterion_GAN, batch_size, train_iter):
     model.eval()  # switch to evaluate mode
     discriminator.eval()
     
     valid_T = torch.ones(batch_size, 1).cuda()
     zeros_T = torch.zeros(batch_size, 1).cuda()
     
-    num_batches = len(val_loader) // batch_size
+    #num_batches = len(val_loader) // batch_size
     total_losses = {"l1":0, "mse":0, "berHu":0, "adv":0}
+    num_batches = 25
     for i in range(num_batches):
 
         input, target = next(val_loader.get_one_batch(batch_size))
@@ -595,31 +634,36 @@ def validate(val_loader, model, discriminator, criterion_L1, criterion_MSE, crit
         loss_berHu = criterion_berHu(pred, target)
         
         loss_adv = 0
-        for a in range(3):
-            for b in range(9):
-                row = 30 * a
-                col = 30 * b
-                patch_fake = pred[:, :, row:row+30, col:col+30]
-                pred_fake = discriminator(patch_fake)
-                loss_adv += criterion_GAN(pred_fake, valid_T)
+        with torch.no_grad():
+            for a in range(3):
+                for b in range(9):
+                    row = 30 * a
+                    col = 30 * b
+                    patch_fake = pred[:, :, row:row+30, col:col+30]
+                    pred_fake = discriminator(patch_fake)
+                    loss_adv += criterion_GAN(pred_fake, valid_T)
                     
-        total_losses["l1"] += loss_l1
-        total_losses["mse"] += loss_MSE
-        total_losses["berHu"] += loss_berHu
-        total_losses["adv"] += loss_adv
-    
+        total_losses["l1"] += loss_L1.item()
+        total_losses["mse"] += loss_MSE.item()
+        total_losses["berHu"] += loss_berHu.item()
+        total_losses["adv"] += loss_adv.item()
+        
+        if i==0:
+            save_image(model, input, train_iter, "val")
     for key in total_losses.keys():
-        total_losses[key] /= len(val_loader)
-    
+        total_losses[key] /= (num_batches * batch_size)
+    model.train()
+    discriminator.train() 
     return total_losses
 
-raw_data_dir = "data/"
-depth_maps_dir = "data/depth_maps/"
+raw_data_dir = ""
+depth_maps_dir = ""
 print("=> Loading Data ...")
 train_loader = DataLoader(raw_data_dir, depth_maps_dir)
+val_loader = DataLoader(raw_data_dir, depth_maps_dir, mode = "val")
 
 print("=> creating Model")
-model = ResNet(layers=152, decoder='fasterupproj', output_size=(90, 270), pretrained=True)
+model = ResNet(layers=152, output_size=(90, 270), pretrained=True)
 discriminator = Discriminator(3)
 discriminator.apply(weights_init)
 
@@ -644,16 +688,17 @@ criterion_berHu = berHuLoss()
 criterion_MSE = MaskedMSELoss()
 criterion_GAN = nn.BCELoss()
 
-batch_size = 16
+batch_size = 64
+val_frequency = 100
 
 for epoch in range(10):
     # Train the Model
-    train(train_loader, model, discriminator, criterion_L1, criterion_MSE, criterion_berHu, 
-          criterion_GAN, optimizer, optimizer_D, epoch, batch_size)
+    train(train_loader, val_loader, model, discriminator, criterion_L1, criterion_MSE, criterion_berHu, 
+          criterion_GAN, optimizer, optimizer_D, epoch, batch_size, val_frequency)
      
     # Save Checkpoint
     torch.save({
-            'epoch': i,
+            'epoch': epoch,
             'model_state_dict': model.state_dict(),
             'optimizer_state_dict': optimizer.state_dict(),
             }, './ResNet.pth')
