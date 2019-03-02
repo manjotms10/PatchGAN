@@ -9,7 +9,7 @@ import math
 import time
 import pickle
 
-from data_loader import DataLoader
+from nyu_loader import DataLoader
 
 def weights_init(m):
     # Initialize filters with Gaussian random weights
@@ -657,13 +657,14 @@ def validate(val_loader, model, discriminator, criterion_L1, criterion_MSE,
     return total_losses
 
 raw_data_dir = ""
-depth_maps_dir = ""
+depth_maps_dir = "depth/"
+nyu_dir = "../../cnn_depth_tensorflow/data/nyu_datasets/"
 print("=> Loading Data ...")
-train_loader = DataLoader(raw_data_dir, depth_maps_dir)
-val_loader = DataLoader(raw_data_dir, depth_maps_dir, mode = "val")
+train_loader = DataLoader(nyu_dir)
+val_loader = DataLoader(nyu_dir)
 
 print("=> creating Model")
-model = ResNet(layers=152, output_size=(90, 270), pretrained=True)
+model = ResNet(layers=101, output_size=(336, 432), pretrained=True)
 discriminator = Discriminator(3)
 discriminator.apply(weights_init)
 
@@ -674,7 +675,7 @@ init_lr = 0.001
 train_params = [{'params': model.get_1x_lr_params(), 'lr': init_lr},
                 {'params': model.get_10x_lr_params(), 'lr': init_lr * 10}]
 
-optimizer = torch.optim.SGD(train_params, lr=init_lr, weight_decay=4e-5)
+optimizer = torch.optim.SGD(train_params, lr=init_lr)
 optimizer_D = torch.optim.Adam(discriminator.parameters(), lr=init_lr)
 
 # You can use DataParallel() whether you use Multi-GPUs or not
@@ -684,12 +685,11 @@ discriminator = discriminator.cuda()
 # Define Loss Function
 criterion_L1 = MaskedL1Loss()
 criterion_berHu = berHuLoss()
-# criterion_SI = ScaleInvariantError()
 criterion_MSE = MaskedMSELoss()
 criterion_GAN = nn.BCELoss()
 
-batch_size = 64
-val_frequency = 100
+batch_size = 16
+val_frequency = 50
 
 for epoch in range(10):
     # Train the Model
