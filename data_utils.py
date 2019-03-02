@@ -10,34 +10,76 @@ class DataLoader():
     depth_maps_dir = dir containing extracted depth maps
     '''
     
-    def __init__(self, raw_data_dir, depth_maps_dir):
+    def __init__(self, raw_images_path, depth_images_path):
         
-        depth_search = "2011_*_*_drive_*_sync/proj_depth/groundtruth/image_0[2,3]/*.png"
-        self.depth_files = sorted(glob.glob(os.path.join(depth_maps_dir, 'train', depth_search)))
+        with open('eigen_train_files.txt', 'r') as f:
+            self.train_files = f.readlines()
+        with open('eigen_test_files.txt', 'r') as f:
+            self.test_files = f.readlines()
+        with open('eigen_val_files.txt', 'r') as f:
+            self.val_files = f.readlines()
+            
+        self.train_data = []
+        self.test_data = []
+        self.val_data = []
+
+        for l in self.train_files:
+            self.train_data.append(raw_images_path + l.split(' ')[0])
+            self.train_data.append(raw_images_path + l.split(' ')[1])
+
+        for l in self.test_files:
+            self.test_data.append(raw_images_path + l.split(' ')[0])
+            self.test_data.append(raw_images_path + l.split(' ')[1])
+
+        for l in self.val_files:
+            self.val_data.append(raw_images_path + l.split(' ')[0])
+            self.val_data.append(raw_images_path + l.split(' ')[1])
         
-        self.img_search = "2011_*_*/2011_*_*_drive_*_sync/image_0[2,3]/data/*.png"
-        self.img_files = sorted(glob.glob(os.path.join(raw_data_dir, self.img_search)))
         
-        self.labels=[]
-        self.imgs = []
-        
-        print('Loading Data ...')
-        for img_name in self.img_files:
+        self.train_imgs, self.train_labels = [], []
+        for img_name in self.train_data:
+            img_name = img_name.split('.')[0] + '.png'
             tokens = img_name.split('/')
-            path = depth_maps_dir + 'train/' + tokens[-4] + '/proj_depth/groundtruth/' + tokens[-3] + '/' + tokens[-1]
-            if os.path.exists(path):
-                self.imgs.append(img_name)
-                self.labels.append(path)
+            path = depth_images_path + 'train/' + tokens[-4] + '/proj_depth/groundtruth/' + tokens[-3] + '/' + tokens[-1]
+            path = path.split('.')[0] + '.png'
+            if os.path.exists(path) and os.path.exists(img_name):
+                self.train_imgs.append(img_name)
+                self.train_labels.append(path)
+
+        self.val_imgs, self.val_labels = [], []
+        for img_name in self.val_data:
+            img_name = img_name.split('.')[0] + '.png'
+            tokens = img_name.split('/')
+            path = depth_images_path + 'train/' + tokens[-4] + '/proj_depth/groundtruth/' + tokens[-3] + '/' + tokens[-1]
+            path = path.split('.')[0] + '.png'
+            if os.path.exists(path) and os.path.exists(img_name):
+                self.val_imgs.append(img_name)
+                self.val_labels.append(path)
+
+        self.test_imgs, self.test_labels = [], []
+        for img_name in self.test_data:
+            img_name = img_name.split('.')[0] + '.png'
+            tokens = img_name.split('/')
+            path = depth_images_path + 'train/' + tokens[-4] + '/proj_depth/groundtruth/' + tokens[-3] + '/' + tokens[-1]
+            path = path.split('.')[0] + '.png'
+            if os.path.exists(path) and os.path.exists(img_name):
+                self.test_imgs.append(img_name)
+                self.test_labels.append(path)
+                
+        print('Found %d Training Images %d'%(len(self.train_imgs), len(self.train_labels)))
+        print('Found %d Validation Images %d'%(len(self.val_imgs), len(self.val_labels)))
+        print('Found %d Test Images %d'%(len(self.test_imgs), len(self.test_labels)))
         
-        print('Found {} Images and {} Depth Maps'.format(len(self.imgs), len(self.labels)))
         
-    def get_one_batch(self, batch_size = 64):
+    def get_one_batch(self, batch_size = 64, split='train'):
         train_images = []
         train_labels = []
 
         while True:
-            idx = np.random.choice(len(self.labels), batch_size)
+            idx = np.random.choice(len(self.train_imgs), batch_size)
             for i in idx:
-                train_images.append(cv2.imread(self.img_files[i]).astype(np.float32)/255)
-                train_labels.append(cv2.imread(self.labels[i]).astype(np.float32))
-            yield np.array(train_images), np.array(train_labels)
+                x, y = cv2.imread(self.train_imgs[i]).astype(np.float32)/255, cv2.imread(self.train_labels[i]).astype(np.float32)/100
+                x, y = cv2.resize(x, (90, 270)), cv2.resize(y, (90, 270))
+                train_images.append(x)
+                train_labels.append(y)
+            yield torch.from_numpy(np.array(train_images)), torch.from_numpy(np.array(train_labels))
