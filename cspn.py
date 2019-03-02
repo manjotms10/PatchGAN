@@ -1,5 +1,4 @@
 import numpy as np
-import cv2
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -14,7 +13,7 @@ cmap = plt.cm.jet
 
 from nyu_dataloader import DataLoader
 import model
-
+from unet import UNet
 
 def weights_init(m):
     # Initialize filters with Gaussian random weights
@@ -112,20 +111,23 @@ def adjust_learning_rate(optimizer, epoch, lr_init):
 train_loader = DataLoader("../cnn_depth_tensorflow/data/nyu_datasets/")
 val_loader = DataLoader("../cnn_depth_tensorflow/data/nyu_datasets/", mode="val")
 
-model = model.resnet50().double()
+#model = model.resnet50().double()
+model = UNet(3, 1).double()
 model = nn.DataParallel(model).cuda()
 optimizer = torch.optim.SGD(model.parameters(), 0.01, momentum=0.9, weight_decay=1e-4)
 criterion_L1 = MaskedL1Loss()
 criterion_MSE = MaskedMSELoss()
+criterion_BerHu = berHuLoss()
+criterion = nn.L1Loss()
 
-batch_size = 4
+batch_size = 8
 num_epochs = 40
 num_batches = len(train_loader)//batch_size
 
-
+print("Staring Training")
 for epoch in range(num_epochs):
+    adjust_learning_rate(optimizer, epoch, 0.01)
     for iter_ in range(num_batches):
-        adjust_learning_rate(optimizer, iter_, 0.001)
         x, y = next(train_loader.get_one_batch(batch_size))
         x, y = x.cuda(), y.cuda()
         pred = model(x)
@@ -135,9 +137,12 @@ for epoch in range(num_epochs):
         optimizer.zero_grad()
         loss_L1 = criterion_L1(pred, y)
         loss_MSE = criterion_MSE(pred, y)
-        print("Epoch {}, Batch {}/{}, L1 = {}, MSE = {}".format(epoch, iter_, num_batches, 
-                                                                loss_L1.item(), loss_MSE.item()))
+        loss_berHu = criterion_BerHu(pred, y)
+        loss = criterion(pred, y)
+        loss_depth = 0.8 * loss_L1 + 0.2 * loss
+        print("Epoch {}, Batch {}/{}, Total Loss = {}, L1 = {}, Masked L1 = {}, MSE = {}, berHu = {}".format(
+               epoch, iter_, num_batches, loss_depth.item(), loss.item(), loss_L1.item(), loss_MSE.item(), loss_berHu.item()))
         
-        loss_L1.backward()
+        loss_depth.backward()
         optimizer.step()
-    
+    torch.save(model.state_dict(), "Model.pth")
