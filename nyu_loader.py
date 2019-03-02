@@ -36,7 +36,7 @@ class DataLoader():
 
     def load_data(self, img_file, label_file):
         x = Image.open(img_file) 
-        y = Image.open(label_file).convert('RGB')
+        y = Image.open(label_file)
         x = np.array(x)
         y = np.array(y)
 
@@ -74,9 +74,10 @@ class DataLoader():
                 label = os.path.join(self.raw_images_path, self.images[i] + ".png")
                 x, y = self.load_data(image, label)
                 #x, y = self.train_transform(x, y)
+                y= np.expand_dims(y, axis=0)
                 images.append(x)
                 labels.append(y)
-            yield torch.from_numpy(np.array(images)).permute(0, 3, 1, 2), torch.from_numpy(np.array(labels)).permute(0, 3, 1, 2)
+            yield torch.from_numpy(np.array(images)).permute(0, 3, 1, 2), torch.from_numpy(np.array(labels))
 
             
     def train_transform(self, rgb, depth):
