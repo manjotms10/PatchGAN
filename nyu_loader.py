@@ -1,11 +1,14 @@
+import os
+import pickle
+
 import numpy as np
-import cv2
 import glob
 import torch
 from PIL import Image
 from skimage.util import img_as_float
 from skimage.transform import resize
 from torchvision import transforms
+
 
 class DataLoader():
     '''
@@ -15,33 +18,61 @@ class DataLoader():
     def __init__(self, raw_images_path, mode="train"):
         
         self.mode = mode
+        self.raw_images_path = raw_images_path
+        self.split_file = "nyu_split.pkl"
         
-        self.train_images = sorted(glob.glob(raw_images_path + '/*.jpg'))
-        self.train_labels = sorted(glob.glob(raw_images_path + '/*.png'))
+        if not os.path.isfile(self.split_file):
+            self.train_test_split()
         
-        print('Found %d Images %d'%(len(self.train_images), len(self.train_labels)))
-    
+        with open(self.split_file, "rb") as split_f:
+            split = pickle.load(split_f)
+        
+        if self.mode == "train":
+            self.images = split["train"]
+        else:
+            self.images = split["val"]
+        
+        print('Found Images %d'%(len(self.images)))
+
     def load_data(self, img_file, label_file):
         x = Image.open(img_file) 
         y = Image.open(label_file).convert('RGB')
-        x = np.array(x).astype(np.float32)
-        y = np.array(y).astype(np.float32)
+        x = np.array(x)
+        y = np.array(y)
 
-        x = resize(x, (90, 270), anti_aliasing=True)
-        y = resize(y, (90, 270), anti_aliasing=True)
-        x = img_as_float(x)/127.5 - 1
-        y = img_as_float(y)/127.5 - 1
+        x = resize(x, (320, 240), anti_aliasing=True)
+        y = resize(y, (320, 240), anti_aliasing=True)
+        x = img_as_float(x)
+        y = img_as_float(y)
         
         return x, y
+    
+    def __len__(self):
+        return len(self.images)
+    
+    def train_test_split(self):
+        images = [x.split('/')[-1].split('.')[0] for x in sorted(glob.glob(self.raw_images_path + '/*.jpg'))]
+
+        total = len(images)
+        indexes = np.random.permutation(total)
+
+        split = int(0.9 * total)
+        train = images[:split]
+        val = images[split:]
+        out = {'train': train, 'val': val}
+        with open("nyu_split.pkl", "wb") as file:
+            pickle.dump(out, file)
         
     def get_one_batch(self, batch_size = 16):
         images = []
         labels = []
 
         while True:
-            idx = np.random.choice(len(self.train_images), batch_size)
+            idx = np.random.choice(len(self.images), batch_size)
             for i in idx:
-                x, y = self.load_data(self.train_images[i], self.train_labels[i])
+                image = os.path.join(self.raw_images_path, self.images[i] + ".jpg")
+                label = os.path.join(self.raw_images_path, self.images[i] + ".png")
+                x, y = self.load_data(image, label)
                 #x, y = self.train_transform(x, y)
                 images.append(x)
                 labels.append(y)
