@@ -52,12 +52,12 @@ class DataLoader():
     def load_data(self, img_file, label_file):
         x = Image.open(img_file) 
         y = Image.open(label_file).convert('RGB')
-        x = np.array(x).astype(np.float32)
-        y = np.array(y).astype(np.float32)
+        x = np.array(x)
+        y = np.array(y)
         x = resize(x, (90, 270), anti_aliasing=True)
         y = resize(y, (90, 270), anti_aliasing=True)
         x = img_as_float(x)
-        y = y.astype(np.float) / 100
+        y = y.astype(np.float)
         return x, y
         
     def get_one_batch(self, batch_size = 64):
