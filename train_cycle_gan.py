@@ -328,7 +328,7 @@ class CycleGAN:
         
         self.architecture = 'cycle_gan_'
             
-        self.lambda1 = 15.0
+        self.lambda1 = 10.0
         self.lambda2 = 10.0
 
         self.is_train = train
@@ -363,7 +363,7 @@ class CycleGAN:
             self.criterionGAN = nn.BCELoss()
             self.criterionCycle = nn.L1Loss()
             self.criterionSupervised = nn.L1Loss()
-            self.depth_loss = ScaleInvariantError()
+            self.depth_loss = nn.L1Loss()
 
             # initialize optimizers
             self.optimizer_g = torch.optim.Adam(itertools.chain(self.GenA.parameters(), self.GenB.parameters()),
