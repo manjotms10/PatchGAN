@@ -131,7 +131,7 @@ def create_depth_color(depth):
     depth = (255 * cmap(depth_relative)[:, :, :3])
     return depth
 
-def save_image(pred_depth, x, y, batch, mode="train"):
+def save_image(pred_depth, x, y, batch, epoch, mode="train"):
     depth = create_depth_color(np.transpose(pred_depth[0].detach().cpu().numpy(), [1,2,0])[:, :, 0])
     target = create_depth_color(np.transpose(y[0].cpu().numpy(), [1,2,0])[:, :, 0])
     orig = 255 * np.transpose(x[0].cpu().numpy(), [1,2,0])
@@ -139,7 +139,7 @@ def save_image(pred_depth, x, y, batch, mode="train"):
     img = np.concatenate((orig, target, depth), axis =1)
     
     img = Image.fromarray(img.astype('uint8'))
-    img.save('saved_images/%s_image_%d.jpg'%(mode, batch))
+    img.save('saved_images/%s_image_%d_%d.jpg'%(mode, epoch, batch))
     
     
 def l2normalize(v, eps=1e-12):
@@ -424,7 +424,7 @@ class CycleGAN:
 
         self.loss_G.backward()
 
-    def train(self):
+    def train(self, epoch):
         # forward
         self.forward()
 
@@ -435,16 +435,17 @@ class CycleGAN:
         self.optimizer_g.step()
 
         # DisA and DisB
-        self.set_requires_grad([self.DisA, self.DisB], True)
-        self.optimizer_d.zero_grad()
+        if epoch < 10:
+            self.set_requires_grad([self.DisA, self.DisB], True)
+            self.optimizer_d.zero_grad()
 
-        # backward Dis A
-        self.loss_disA = self.backward_d(self.DisA, self.real_B, self.fake_B)
+            # backward Dis A
+            self.loss_disA = self.backward_d(self.DisA, self.real_B, self.fake_B)
 
-        # backward Dis B
-        self.loss_disB = self.backward_d(self.DisB, self.real_A, self.fake_A)
+            # backward Dis B
+            self.loss_disB = self.backward_d(self.DisB, self.real_A, self.fake_A)
 
-        self.optimizer_d.step()
+            self.optimizer_d.step()
 
     def test(self):
         with torch.no_grad():
@@ -535,7 +536,7 @@ def train(train_loader, val_loader, cycle_gan, criterion_L1, criterion_MSE,
         real_B = Variable(target.type(Tensor))
 
         cycle_gan.set_input(real_A, real_B)
-        cycle_gan.train()
+        cycle_gan.train(epoch)
         pred = cycle_gan.fake_B
         
         loss_L1 = criterion_L1(pred, target)
@@ -551,7 +552,7 @@ def train(train_loader, val_loader, cycle_gan, criterion_L1, criterion_MSE,
         total_losses_log["depth"] += loss_depth.item()
           
         if (iter_ + 1) % 20 == 0:
-            save_image(pred, input, target, iter_)
+            save_image(pred, input, target, iter_, epoch)
             print('Train Epoch: {} Batch: [{}/{}], Depth:{:0.3f} ADV:{:0.3f} L1 ={:0.3f}, MSE={:0.3f}, berHu={:0.3f}, Disc:{:0.3f}'.
                   format(epoch, iter_ + 1, num_batches, loss_depth, cycle_gan.loss_genA.item(),
                 loss_L1.item(), loss_MSE.item(), loss_berHu.item(), cycle_gan.loss_disA.item()))
@@ -608,7 +609,7 @@ def validate(val_loader, cycle_gan, criterion_L1, criterion_MSE,
         total_losses["depth"] += loss_depth.item()
         
         if i==0:
-            save_image(pred, input, target, train_iter, "val")
+            save_image(pred, input, target, train_iter, epoch, "val")
     for key in total_losses.keys():
         total_losses[key] /= num_batches
     cycle_gan.set_train()
@@ -628,7 +629,7 @@ images_prefix = project_root + "saved_images/"
 ensure_dir(models_prefix)
 ensure_dir(images_prefix)
 
-init_lr = 0.001
+init_lr = 0.0002
 b1 = 0.5
 print("=> creating Model")
 cycle_gan = CycleGAN(device, models_prefix, init_lr, b1,train=True)
