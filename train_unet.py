@@ -16,7 +16,7 @@ from nyu_dataloader import DataLoader
 import model
 from unet import UNet
 
-logger = SummaryWriter("runs/run1")
+writer = SummaryWriter("runs/run1")
 
 def weights_init(m):
     # Initialize filters with Gaussian random weights
@@ -124,46 +124,12 @@ def adjust_learning_rate(optimizer, epoch, lr_init):
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr
 
-class Discriminator(nn.Module):
-    def __init__(self):
-        super(Discriminator, self).__init__()
-        self.model = nn.Sequential (
-                    nn.Conv2d(1, 32, 4, 1, 0),
-                    nn.BatchNorm2d(32),
-                    nn.ReLU(True),
-                    nn.MaxPool2d(2),
-                    nn.Conv2d(32, 32, 3, 2, 1),
-                    nn.BatchNorm2d(32),
-                    nn.ReLU(True),
-                    nn.MaxPool2d(2),
-                    nn.Conv2d(32, 32, 3, 2, 1),
-                    nn.BatchNorm2d(32),
-                    nn.ReLU(True)
-                )
-        self.out = nn.Linear(32, 1)
-    
-    def forward(self, x):
-        x = self.model(x)
-        x = x.view(-1, 32)
-        x = self.out(x)
-        return torch.sigmoid(x)
-
-
-def set_requires_grad(net, requires_grad=False):
-    if net is not None:
-        for param in net.parameters():
-            param.requires_grad = requires_grad
-
-
-def train(train_loader, val_loader, model, discriminator, criterion_L1, criterion_MSE, 
-          criterion_berHu, criterion_GAN, optimizer, optimizer_D, epoch, batch_size):
+def train(train_loader, val_loader, model, criterion_L1, criterion_MSE, 
+          criterion_berHu, optimizer, epoch, batch_size):
     
     model.train()  # switch to train mode
     eval_mode = False
     init_lr = optimizer.param_groups[0]['lr']
-    
-    valid_T = torch.ones(batch_size, 1).cuda().double()
-    zeros_T = torch.zeros(batch_size, 1).cuda().double()
     
     for iter_ in range(num_batches):
         input, target = next(train_loader.get_one_batch(batch_size))
@@ -180,51 +146,24 @@ def train(train_loader, val_loader, model, discriminator, criterion_L1, criterio
         loss_berHu = criterion_berHu(pred, target)
         loss_SI = criterion_SI(pred, target)
 
-        set_requires_grad(discriminator, False)
-        
-        loss_adv = 0
-        
-        for a in range(12):
-            for b in range(16):
-                row = 19 * a
-                col = 19 * b
-                patch_fake = pred[:, :, row:row+19, col:col+19]
-                pred_fake = discriminator(patch_fake)
-                loss_adv += criterion_GAN(pred_fake, valid_T)
-    
-        loss_gen = loss_SI + 0.5 * loss_adv
+        writer.add_scalar('L1 Loss', loss_L1.item(), 25*epoch + iter_ + 1)
+        writer.add_scalar('MSE Loss', loss_MSE.item(), 25*epoch + iter_ + 1)
+        writer.add_scalar('SI Loss', loss_SI.item(), 25*epoch + iter_ + 1)
+        writer.add_scalar('berHu Loss', loss_berHu.item(), 25*epoch + iter_ + 1)
+
+        writer.add_scalars('loss/metrics', { 
+                              "L1": loss_L1.item(), "MSE": loss_MSE.item(), 
+                              "SI": loss_SI.item(), "berHu": loss_berHu.item()}
+                              , 25 * epoch + iter_)
+        loss_gen = loss_SI + 5 * loss_L1
         loss_gen.backward()
         optimizer.step()
         
-        set_requires_grad(discriminator, True)
-        optimizer_D.zero_grad()
-        loss_D = 0
-        for a in range(12):
-            for b in range(16):
-                row = 19 * a
-                col = 19 * b
-                patch_fake = pred[:, :, row:row+19, col:col+19]
-                patch_real = target[:, :, row:row+19, col:col+19]
-                pred_fake = discriminator(patch_fake.detach())
-                pred_real = discriminator(patch_real)
-                loss_D_fake = criterion_GAN(pred_fake, zeros_T)
-                loss_D_real = criterion_GAN(pred_real, valid_T)
-                loss_D += 0.5 * (loss_D_fake + loss_D_real)
-        
-        loss_D.backward()
-        optimizer_D.step()
-
-        torch.cuda.synchronize()
         if (iter_ + 1) % 10 == 0:
             save_image(model, input, target, iter_)
-            logger.add_scalar('L1', loss_L1.item())
-            logger.add_scalar('MSE', loss_MSE.item())
-            logger.add_scalar('berHu', loss_berHu.item())
-            logger.add_scalar('SI', loss_SI.item())
-            
-            print('Train Epoch: {} Batch: [{}/{}], SI: {:0.4f}, ADV:{:0.3f} L1 ={:0.3f}, MSE={:0.3f}, berHu={:0.3f}, Disc:{:0.3f}'.format(
-                epoch, iter_ + 1, num_batches, loss_SI.item(), loss_adv.item(),
-                loss_L1.item(), loss_MSE.item(), loss_berHu.item(), loss_D.item()))
+            print('Train Epoch: {} Batch: [{}/{}], SI: {:0.4f}, L1 ={:0.3f}, MSE={:0.3f}, berHu={:0.3f}'.format(
+                epoch, iter_ + 1, num_batches, loss_SI.item(),
+                loss_L1.item(), loss_MSE.item(), loss_berHu.item()))
 
 
 train_loader = DataLoader("../cnn_depth_tensorflow/data/nyu_datasets/")
@@ -233,20 +172,12 @@ val_loader = DataLoader("../cnn_depth_tensorflow/data/nyu_datasets/", mode="val"
 model = UNet(3, 1).double()
 model = nn.DataParallel(model).cuda()
 
-discriminator = Discriminator().double()
-discriminator.apply(weights_init)
-discriminator = discriminator.cuda()
-discriminator = nn.DataParallel(discriminator)
-
-optimizer = torch.optim.Adam(model.parameters(), lr = 0.001, weight_decay=1e-4)
-optimizer_D = torch.optim.Adam(discriminator.parameters(), lr = 4 * 0.001)
+optimizer = torch.optim.Adam(model.parameters(), lr = 0.0002, weight_decay=1e-4)
 
 criterion_L1 = MaskedL1Loss()
 criterion_berHu = berHuLoss()
 criterion_MSE = MaskedMSELoss()
 criterion_SI = ScaleInvariantError()
-criterion_GAN = nn.BCELoss()
-criterion = nn.L1Loss()
 
 batch_size = 8
 num_epochs = 40
@@ -254,13 +185,13 @@ num_batches = len(train_loader)//batch_size
 
 for epoch in range(25):
     adjust_learning_rate(optimizer, epoch, 0.001)
-    train(train_loader, val_loader, model, discriminator, criterion_L1, criterion_MSE, criterion_berHu, 
-          criterion_GAN, optimizer, optimizer_D, epoch, batch_size)
+    train(train_loader, val_loader, model, criterion_L1, criterion_MSE, criterion_berHu, 
+          optimizer, epoch, batch_size)
      
     torch.save({
             'epoch': epoch,
             'model_state_dict': model.state_dict(),
             'optimizer_state_dict': optimizer.state_dict(),
-            }, './unet.pth')
+            }, './unet_si.pth')
 
 

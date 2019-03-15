@@ -9,7 +9,7 @@ import math
 import time
 import pickle
 
-from data_loader import DataLoader
+from nyu_loader import DataLoader
 
 def weights_init(m):
     # Initialize filters with Gaussian random weights
@@ -509,7 +509,7 @@ def train(train_loader, val_loader, model, discriminator, criterion_L1, criterio
           criterion_berHu, criterion_GAN, optimizer, optimizer_D, epoch, batch_size, val_frequency=10):
     model.train()  # switch to train mode
     eval_mode = False
-    num_batches = len(train_loader)// batch_size
+    num_batches = 1453 // batch_size
     init_lr = optimizer.param_groups[0]['lr']
     
     total_losses_log = {"l1":0, "mse":0, "berHu":0, "adv":0}
@@ -522,9 +522,9 @@ def train(train_loader, val_loader, model, discriminator, criterion_L1, criterio
     
     for iter_ in range(num_batches):
         # Adjust Learning Rate
-        #if iter_ % 1000 == 0 and optimizer.param_groups[0]['lr'] > init_lr/10.0:
-        #    for param_group in optimizer.param_groups:
-        #        param_group['lr'] *= 0.98
+        if iter_ % 1000 == 0 and optimizer.param_groups[0]['lr'] > init_lr/10.0:
+            for param_group in optimizer.param_groups:
+                param_group['lr'] *= 0.98
         
         input, target = next(train_loader.get_one_batch(batch_size))
         input, target = input.float(), target.float()
@@ -539,7 +539,7 @@ def train(train_loader, val_loader, model, discriminator, criterion_L1, criterio
         loss_MSE = criterion_MSE(pred, target)
         loss_berHu = criterion_berHu(pred, target)
         #loss_SI = criterion_SI(pred, target)
-        
+        '''
         set_requires_grad(discriminator, False)
         
         loss_adv = 0
@@ -551,11 +551,12 @@ def train(train_loader, val_loader, model, discriminator, criterion_L1, criterio
                 patch_fake = pred[:, :, row:row+30, col:col+30]
                 pred_fake = discriminator(patch_fake)
                 loss_adv += criterion_GAN(pred_fake, valid_T)
-    
-        loss_gen = loss_L1 + loss_adv
+        '''
+        
+        loss_gen = loss_L1 + loss_berHu
         loss_gen.backward()
         optimizer.step()
-        
+        '''
         set_requires_grad(discriminator, True)
         optimizer_D.zero_grad()
         loss_D = 0
@@ -575,17 +576,17 @@ def train(train_loader, val_loader, model, discriminator, criterion_L1, criterio
         optimizer_D.step()
 
         torch.cuda.synchronize()
-        
+        '''
         total_losses_log["l1"] += loss_L1.item()
         total_losses_log["mse"] += loss_MSE.item()
         total_losses_log["berHu"] += loss_berHu.item()
-        total_losses_log["adv"] += loss_adv.item()
+        #total_losses_log["adv"] += loss_adv.item()
          
         if (iter_ + 1) % 10 == 0:
             save_image(model, input, iter_)
-            print('Train Epoch: {} Batch: [{}/{}], ADV:{:0.3f} L1 ={:0.3f}, MSE={:0.3f}, berHu={:0.3f}, Disc:{:0.3f}'.format(
-                epoch, iter_ + 1, num_batches, loss_adv.item(),
-                loss_L1.item(), loss_MSE.item(), loss_berHu.item(), loss_D.item()))
+            print('Train Epoch: {} Batch: [{}/{}], L1 ={:0.3f}, MSE={:0.3f}, berHu={:0.3f}'.format(
+                epoch, iter_ + 1, num_batches, 
+                loss_L1.item(), loss_MSE.item(), loss_berHu.item()))
         
         if (iter_ + 1) % val_frequency == 0:
             val_loss = validate(val_loader, model, discriminator, criterion_L1, criterion_MSE, criterion_berHu, criterion_GAN, batch_size, iter_)
@@ -606,7 +607,7 @@ def save_losses(train_loss_list, val_loss_list):
 def validate(val_loader, model, discriminator, criterion_L1, criterion_MSE, 
              criterion_berHu, criterion_GAN, batch_size, train_iter):
     model.eval()  # switch to evaluate mode
-    discriminator.eval()
+    #discriminator.eval()
     
     valid_T = torch.ones(batch_size, 1).cuda()
     zeros_T = torch.zeros(batch_size, 1).cuda()
@@ -632,7 +633,7 @@ def validate(val_loader, model, discriminator, criterion_L1, criterion_MSE,
         loss_L1 = criterion_L1(pred, target)
         loss_MSE = criterion_MSE(pred, target)
         loss_berHu = criterion_berHu(pred, target)
-        
+        '''
         loss_adv = 0
         with torch.no_grad():
             for a in range(3):
@@ -642,28 +643,31 @@ def validate(val_loader, model, discriminator, criterion_L1, criterion_MSE,
                     patch_fake = pred[:, :, row:row+30, col:col+30]
                     pred_fake = discriminator(patch_fake)
                     loss_adv += criterion_GAN(pred_fake, valid_T)
-                    
+        '''            
         total_losses["l1"] += loss_L1.item()
         total_losses["mse"] += loss_MSE.item()
         total_losses["berHu"] += loss_berHu.item()
-        total_losses["adv"] += loss_adv.item()
+        #total_losses["adv"] += loss_adv.item()
         
         if i==0:
             save_image(model, input, train_iter, "val")
+    
     for key in total_losses.keys():
         total_losses[key] /= (num_batches * batch_size)
+    
     model.train()
-    discriminator.train() 
+    #discriminator.train() 
     return total_losses
 
 raw_data_dir = ""
-depth_maps_dir = ""
+depth_maps_dir = "depth/"
+nyu_dir = "../cnn_depth_tensorflow/data/nyu_datasets/"
 print("=> Loading Data ...")
-train_loader = DataLoader(raw_data_dir, depth_maps_dir)
-val_loader = DataLoader(raw_data_dir, depth_maps_dir, mode = "val")
+train_loader = DataLoader(nyu_dir)
+val_loader = DataLoader(nyu_dir)
 
 print("=> creating Model")
-model = ResNet(layers=152, output_size=(90, 270), pretrained=True)
+model = ResNet(layers=101, output_size=(90, 270), pretrained=True)
 discriminator = Discriminator(3)
 discriminator.apply(weights_init)
 
@@ -674,24 +678,24 @@ init_lr = 0.001
 train_params = [{'params': model.get_1x_lr_params(), 'lr': init_lr},
                 {'params': model.get_10x_lr_params(), 'lr': init_lr * 10}]
 
-optimizer = torch.optim.SGD(train_params, lr=init_lr, weight_decay=4e-5)
+optimizer = torch.optim.SGD(train_params, lr=init_lr)
 optimizer_D = torch.optim.Adam(discriminator.parameters(), lr=init_lr)
 
 # You can use DataParallel() whether you use Multi-GPUs or not
 model = nn.DataParallel(model).cuda()
+#model = model.cuda()
 discriminator = discriminator.cuda()
 
 # Define Loss Function
 criterion_L1 = MaskedL1Loss()
 criterion_berHu = berHuLoss()
-# criterion_SI = ScaleInvariantError()
 criterion_MSE = MaskedMSELoss()
 criterion_GAN = nn.BCELoss()
 
 batch_size = 64
-val_frequency = 100
+val_frequency = 50
 
-for epoch in range(10):
+for epoch in range(50):
     # Train the Model
     train(train_loader, val_loader, model, discriminator, criterion_L1, criterion_MSE, criterion_berHu, 
           criterion_GAN, optimizer, optimizer_D, epoch, batch_size, val_frequency)
@@ -702,3 +706,4 @@ for epoch in range(10):
             'model_state_dict': model.state_dict(),
             'optimizer_state_dict': optimizer.state_dict(),
             }, './ResNet.pth')
+
