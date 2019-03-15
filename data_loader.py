@@ -51,13 +51,15 @@ class DataLoader():
     
     def load_data(self, img_file, label_file):
         x = Image.open(img_file) 
-        y = Image.open(label_file).convert('RGB')
+        y = Image.open(label_file)
         x = np.array(x).astype(np.float32)
         y = np.array(y).astype(np.float32)
         x = resize(x, (90, 270), anti_aliasing=True)
         y = resize(y, (90, 270), anti_aliasing=True)
-        x = img_as_float(x)
-        y = y.astype(np.float) / 100
+        x = x / 255.0
+        y[y<1] = y
+        y = np.log(y)
+        y = y / np.max(y)
         return x, y
         
     def get_one_batch(self, batch_size = 64):

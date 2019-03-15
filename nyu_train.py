@@ -428,7 +428,7 @@ class ScaleInvariantError(nn.Module):
     Scale invariant error defined in Eigen's paper!
     """
 
-    def __init__(self, lamada=0.5):
+    def __init__(self, lamada=1.0):
         super(ScaleInvariantError, self).__init__()
         self.lamada = lamada
         return
