@@ -14,5 +14,5 @@ The final results for KITTI are still pending. For the NYU dataset, it achieves 
 
 Here are a few snapshots
 
-![Sample Image 1](imgs/train_image_28.png "NYU sample results")
-![Sample Image 2](imgs/train_image_24.png "NYU sample results")
+![Sample Image 1](imgs/train_image_28.jpg "NYU sample results")
+![Sample Image 2](imgs/train_image_24.jpg "NYU sample results")
