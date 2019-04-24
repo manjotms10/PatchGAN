@@ -1,4 +1,4 @@
-# Course Project for ECE 271B
+# Refining Monocular Depth Estimation using PatchGAN Priors
 Learning Depth for Autonomous driving from Monocular Images
 
 ## Network
